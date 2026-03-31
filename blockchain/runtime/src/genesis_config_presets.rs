@@ -5,13 +5,15 @@ use crate::{
 
 use alloc::{vec, vec::Vec};
 
+use polkadot_sdk::{staging_xcm as xcm, *};
+
 use cumulus_primitives_core::ParaId;
 use frame_support::build_struct_json_patch;
 use parachains_common::AuraId;
 use serde_json::Value;
 use sp_genesis_builder::PresetId;
 use sp_keyring::Sr25519Keyring;
-use staging_xcm::prelude::XCM_VERSION;
+use xcm::prelude::XCM_VERSION;
 
 /// The default XCM version to set in genesis config.
 const SAFE_XCM_VERSION: u32 = XCM_VERSION;

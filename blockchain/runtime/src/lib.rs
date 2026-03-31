@@ -13,6 +13,9 @@ mod weights;
 
 extern crate alloc;
 use alloc::vec::Vec;
+use smallvec::smallvec;
+
+use polkadot_sdk::{staging_parachain_info as parachain_info, *};
 
 use sp_runtime::{
 	generic, impl_opaque_keys,
@@ -32,41 +35,18 @@ pub use sp_runtime::{MultiAddress, Perbill, Permill};
 
 pub use genesis_config_presets::PARACHAIN_ID;
 
-/// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
-
-/// Some way of identifying an account on the chain.
 pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
-
-/// Balance of an account.
 pub type Balance = u128;
-
-/// Index of a transaction in the chain.
 pub type Nonce = u32;
-
-/// A hash of some data used by the chain.
 pub type Hash = sp_core::H256;
-
-/// An index to a block.
 pub type BlockNumber = u32;
-
-/// The address format for describing accounts.
 pub type Address = MultiAddress<AccountId, ()>;
-
-/// Block header type as expected by this runtime.
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-
-/// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-
-/// A Block signed with a Justification
 pub type SignedBlock = generic::SignedBlock<Block>;
-
-/// BlockId type as expected by this runtime.
 pub type BlockId = generic::BlockId<Block>;
 
-/// The extension to the basic transaction logic.
-/// Includes pallet_revive's SetOrigin for Ethereum transaction support.
 pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 	Runtime,
 	(
@@ -79,40 +59,12 @@ pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 		frame_system::CheckWeight<Runtime>,
 		pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 		frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
-		pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
 	),
 >;
 
-/// Default extensions applied to Ethereum transactions.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct EthExtraImpl;
-
-impl pallet_revive::evm::runtime::EthExtra for EthExtraImpl {
-	type Config = Runtime;
-	type Extension = TxExtension;
-
-	fn get_eth_extension(nonce: u32, tip: Balance) -> Self::Extension {
-		(
-			frame_system::CheckNonZeroSender::<Runtime>::new(),
-			frame_system::CheckSpecVersion::<Runtime>::new(),
-			frame_system::CheckTxVersion::<Runtime>::new(),
-			frame_system::CheckGenesis::<Runtime>::new(),
-			frame_system::CheckMortality::from(generic::Era::Immortal),
-			frame_system::CheckNonce::<Runtime>::from(nonce),
-			frame_system::CheckWeight::<Runtime>::new(),
-			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
-			frame_metadata_hash_extension::CheckMetadataHash::<Runtime>::new(false),
-			pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
-		)
-			.into()
-	}
-}
-
-/// Unchecked extrinsic type supporting both Substrate and Ethereum transactions.
 pub type UncheckedExtrinsic =
-	pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
+	generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
 
-/// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
 	Runtime,
 	Block,
@@ -121,17 +73,38 @@ pub type Executive = frame_executive::Executive<
 	AllPalletsWithSystem,
 >;
 
-// WeightToFee is defined in configs/mod.rs using pallet_revive::evm::fees::BlockRatioFee
+use frame_support::weights::{
+	WeightToFeeCoefficient, WeightToFeeCoefficients, WeightToFeePolynomial,
+};
+use weights::ExtrinsicBaseWeight;
 
-/// Opaque types for CLI compatibility.
+pub struct WeightToFee;
+impl WeightToFeePolynomial for WeightToFee {
+	type Balance = Balance;
+	fn polynomial() -> WeightToFeeCoefficients<Self::Balance> {
+		let p = MILLI_UNIT / 10;
+		let q = 100 * Balance::from(ExtrinsicBaseWeight::get().ref_time());
+		smallvec![WeightToFeeCoefficient {
+			degree: 1,
+			negative: false,
+			coeff_frac: Perbill::from_rational(p % q, q),
+			coeff_integer: p / q,
+		}]
+	}
+}
+
 pub mod opaque {
 	use super::*;
 	pub use sp_runtime::OpaqueExtrinsic as UncheckedExtrinsic;
+	use sp_runtime::{
+		generic,
+		traits::{BlakeTwo256, Hash as HashT},
+	};
 
 	pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 	pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 	pub type BlockId = generic::BlockId<Block>;
-	pub type Hash = <BlakeTwo256 as sp_runtime::traits::Hash>::Output;
+	pub type Hash = <BlakeTwo256 as HashT>::Output;
 }
 
 impl_opaque_keys! {
@@ -222,7 +195,7 @@ mod runtime {
 	#[runtime::pallet_index(2)]
 	pub type Timestamp = pallet_timestamp;
 	#[runtime::pallet_index(3)]
-	pub type ParachainInfo = staging_parachain_info;
+	pub type ParachainInfo = parachain_info;
 	#[runtime::pallet_index(4)]
 	pub type WeightReclaim = cumulus_pallet_weight_reclaim;
 
@@ -256,26 +229,6 @@ mod runtime {
 
 	#[runtime::pallet_index(50)]
 	pub type TemplatePallet = pallet_template;
-
-	// Smart contracts (EVM + PVM via pallet-revive)
-	#[runtime::pallet_index(90)]
-	pub type Revive = pallet_revive;
-}
-
-impl pallet_revive::evm::runtime::SetWeightLimit for RuntimeCall {
-	fn set_weight_limit(&mut self, new_weight_limit: Weight) -> Weight {
-		match self {
-			Self::Revive(
-				pallet_revive::Call::eth_call { weight_limit, .. } |
-				pallet_revive::Call::eth_instantiate_with_code { weight_limit, .. },
-			) => {
-				let old = *weight_limit;
-				*weight_limit = new_weight_limit;
-				old
-			},
-			_ => Default::default(),
-		}
-	}
 }
 
 cumulus_pallet_parachain_system::register_validate_block! {
