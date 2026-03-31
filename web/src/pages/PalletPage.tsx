@@ -61,7 +61,11 @@ export default function PalletPage() {
       const tx = api.tx.TemplatePallet.create_claim({
         hash: Binary.fromHex(fileHash),
       });
-      await tx.signAndSubmit(account.signer);
+      const result = await tx.signAndSubmit(account.signer);
+      if (!result.ok) {
+        setTxStatus(`Error: ${result.dispatchError?.type ?? "Transaction failed"}`);
+        return;
+      }
       setTxStatus("Claim created successfully!");
       setFileHash(null);
       loadClaims();
@@ -78,7 +82,11 @@ export default function PalletPage() {
       const tx = api.tx.TemplatePallet.revoke_claim({
         hash: Binary.fromHex(hash),
       });
-      await tx.signAndSubmit(account.signer);
+      const result = await tx.signAndSubmit(account.signer);
+      if (!result.ok) {
+        setTxStatus(`Error: ${result.dispatchError?.type ?? "Transaction failed"}`);
+        return;
+      }
       setTxStatus("Claim revoked successfully!");
       loadClaims();
     } catch (e) {
