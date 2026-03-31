@@ -41,9 +41,9 @@ export default function PalletPage() {
       const api = getApi();
       const entries = await api.query.TemplatePallet.Claims.getEntries();
       const result: Claim[] = entries.map((entry) => ({
-        hash: entry.keyArgs[0],
-        owner: entry.value[0],
-        block: entry.value[1],
+        hash: entry.keyArgs[0].asHex(),
+        owner: entry.value[0].toString(),
+        block: Number(entry.value[1]),
       }));
       setClaims(result);
     } catch (e) {
