@@ -1,106 +1,43 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import { getClient, disconnectClient } from "../hooks/useChain";
+import { useState } from "react";
 import { useChainStore } from "../store/chainStore";
-import { stack_template } from "@polkadot-api/descriptors";
+import { useConnection } from "../hooks/useConnection";
 
 export default function HomePage() {
-  const {
-    wsUrl,
-    setWsUrl,
-    connected,
-    blockNumber,
-    setConnected,
-    setBlockNumber,
-    pallets,
-    setPallets,
-  } = useChainStore();
-  const [chainName, setChainName] = useState<string>("...");
-  const [error, setError] = useState<string | null>(null);
+  const { wsUrl, setWsUrl, connected, blockNumber, pallets } = useChainStore();
+  const { connect } = useConnection();
   const [urlInput, setUrlInput] = useState(wsUrl);
+  const [error, setError] = useState<string | null>(null);
+  const [chainName, setChainName] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const connectIdRef = useRef(0);
 
-  const connect = useCallback(
-    async (url: string) => {
-      const id = ++connectIdRef.current;
-      setConnecting(true);
-      setError(null);
-      setConnected(false);
-      setChainName("...");
-      setPallets({ templatePallet: null, revive: null });
-
-      disconnectClient();
-
-      try {
-        const client = getClient(url);
-        const chain = await Promise.race([
-          client.getChainSpecData(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Connection timed out")), 10000)
-          ),
-        ]);
-
-        // Bail if a newer connect call was started (React strict mode)
-        if (connectIdRef.current !== id) return;
-
-        setChainName(chain.name);
-        setConnected(true);
-
-        // Detect available pallets
-        const detected = { templatePallet: false, revive: false };
-
-        try {
-          const api = client.getTypedApi(stack_template);
-          await api.query.TemplatePallet.Claims.getEntries();
-          detected.templatePallet = true;
-        } catch {
-          detected.templatePallet = false;
-        }
-
-        try {
-          const api = client.getTypedApi(stack_template);
-          await api.constants.Revive.DepositPerByte();
-          detected.revive = true;
-        } catch {
-          detected.revive = false;
-        }
-
-        if (connectIdRef.current !== id) return;
-        setPallets(detected);
-      } catch (e) {
-        if (connectIdRef.current !== id) return;
-        setError(`Could not connect to ${url}. Is the chain running?`);
-        setPallets({ templatePallet: false, revive: false });
-        console.error(e);
-      } finally {
-        if (connectIdRef.current === id) {
-          setConnecting(false);
-        }
-      }
-    },
-    [setConnected, setPallets]
-  );
-
-  // Connect on mount (skip if already connected)
-  useEffect(() => {
-    if (!connected) {
-      connect(wsUrl);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Subscribe to blocks when connected
-  useEffect(() => {
-    if (!connected) return;
-    const client = getClient(wsUrl);
-    const subscription = client.finalizedBlock$.subscribe((block) => {
-      setBlockNumber(block.number);
+  // Refresh chain name when connected
+  if (connected && !chainName && !connecting) {
+    import("../hooks/useChain").then(({ getClient }) => {
+      getClient(wsUrl)
+        .getChainSpecData()
+        .then((data) => setChainName(data.name))
+        .catch(() => {});
     });
-    return () => subscription.unsubscribe();
-  }, [connected, wsUrl, setBlockNumber]);
+  }
 
-  function handleConnect() {
+  async function handleConnect() {
     setWsUrl(urlInput);
-    connect(urlInput);
+    setConnecting(true);
+    setError(null);
+    setChainName(null);
+    try {
+      const result = await connect(urlInput);
+      if (result?.ok && result.chain) {
+        setChainName(result.chain.name);
+      }
+    } catch (e) {
+      setError(
+        `Could not connect to ${urlInput}. Is the chain running?`
+      );
+      console.error(e);
+    } finally {
+      setConnecting(false);
+    }
   }
 
   return (
@@ -158,7 +95,7 @@ export default function HomePage() {
             <h3 className="text-sm font-medium text-gray-400 mb-1">
               Chain Name
             </h3>
-            <p className="text-xl font-bold">{chainName}</p>
+            <p className="text-xl font-bold">{chainName || "..."}</p>
           </div>
           <div>
             <h3 className="text-sm font-medium text-gray-400 mb-1">

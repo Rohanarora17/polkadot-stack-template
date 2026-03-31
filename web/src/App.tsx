@@ -1,9 +1,13 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useChainStore } from "./store/chainStore";
+import { useConnection } from "./hooks/useConnection";
 
 export default function App() {
   const location = useLocation();
   const pallets = useChainStore((s) => s.pallets);
+
+  // Auto-connect and subscribe to blocks — runs regardless of which page loads first
+  useConnection();
 
   const navItems = [
     { path: "/", label: "Home", enabled: true },
