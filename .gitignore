@@ -7,6 +7,7 @@ target/
 node_modules/
 dist/
 .parcel-cache/
+*.tsbuildinfo
 
 # Environment
 .env
