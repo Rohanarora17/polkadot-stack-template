@@ -39,7 +39,7 @@ export default function HomePage() {
       <p className="text-gray-400">
         A developer starter template demonstrating the same Counter concept
         implemented three ways: as a Substrate pallet, a Solidity EVM contract,
-        and an ink! PVM contract.
+        and a PVM contract (Solidity compiled via resolc).
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -1,2 +1,2 @@
-FROM docker.io/parity/polkadot-omni-node:stable2503-7
+FROM docker.io/parity/polkadot-omni-node:stable2512-3
 COPY chain_spec.json /chain/chain_spec.json

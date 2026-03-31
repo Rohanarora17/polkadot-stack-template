@@ -36,3 +36,4 @@ contracts/*/cache/
 contracts/*/artifacts/
 contracts/*/typechain-types/
 contracts/*/ignition/deployments/
+**/chain_spec.json

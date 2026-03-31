@@ -7,7 +7,7 @@
 //! - Weight annotations via benchmarks
 //! - Mock runtime and unit tests
 //!
-//! This pallet implements the same "counter" concept as the EVM and ink! contract
+//! This pallet implements the same "counter" concept as the Solidity smart contract
 //! templates, allowing developers to compare the three approaches side-by-side.
 
 #![cfg_attr(not(feature = "std"), no_std)]
