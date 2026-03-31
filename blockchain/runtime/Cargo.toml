@@ -18,7 +18,7 @@ substrate-wasm-builder = { workspace = true, optional = true }
 [dependencies]
 codec = { features = ["derive"], workspace = true }
 cumulus-pallet-parachain-system.workspace = true
-hex-literal = { optional = true, workspace = true, default-features = true }
+hex-literal = { workspace = true, default-features = true }
 log = { workspace = true }
 pallet-template.workspace = true
 polkadot-sdk = { workspace = true, features = [
@@ -69,7 +69,6 @@ std = [
 ]
 runtime-benchmarks = [
 	"cumulus-pallet-parachain-system/runtime-benchmarks",
-	"hex-literal",
 	"pallet-template/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 ]
