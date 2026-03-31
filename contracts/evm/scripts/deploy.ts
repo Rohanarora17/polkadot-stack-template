@@ -6,7 +6,7 @@ async function main() {
   const counter = await Counter.deploy();
   await counter.waitForDeployment();
   const address = await counter.getAddress();
-  console.log(`Counter deployed to: ${address}`);
+  console.log(`EVM Counter deployed to: ${address}`);
 }
 
 main().catch((error) => {
