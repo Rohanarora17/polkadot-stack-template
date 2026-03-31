@@ -59,11 +59,38 @@ pub type TxExtension = cumulus_pallet_weight_reclaim::StorageWeightReclaim<
 		frame_system::CheckWeight<Runtime>,
 		pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 		frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
+		pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
 	),
 >;
 
+/// Default extensions applied to Ethereum transactions.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EthExtraImpl;
+
+impl pallet_revive::evm::runtime::EthExtra for EthExtraImpl {
+	type Config = Runtime;
+	type Extension = TxExtension;
+
+	fn get_eth_extension(nonce: u32, tip: Balance) -> Self::Extension {
+		(
+			frame_system::CheckNonZeroSender::<Runtime>::new(),
+			frame_system::CheckSpecVersion::<Runtime>::new(),
+			frame_system::CheckTxVersion::<Runtime>::new(),
+			frame_system::CheckGenesis::<Runtime>::new(),
+			frame_system::CheckMortality::from(generic::Era::Immortal),
+			frame_system::CheckNonce::<Runtime>::from(nonce),
+			frame_system::CheckWeight::<Runtime>::new(),
+			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+			frame_metadata_hash_extension::CheckMetadataHash::<Runtime>::new(false),
+			pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
+		)
+			.into()
+	}
+}
+
+/// Unchecked extrinsic type supporting both Substrate and Ethereum transactions.
 pub type UncheckedExtrinsic =
-	generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
+	pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
 
 pub type Executive = frame_executive::Executive<
 	Runtime,
@@ -229,6 +256,26 @@ mod runtime {
 
 	#[runtime::pallet_index(50)]
 	pub type TemplatePallet = pallet_template;
+
+	// Smart contracts (EVM + PVM via pallet-revive)
+	#[runtime::pallet_index(90)]
+	pub type Revive = pallet_revive;
+}
+
+impl pallet_revive::evm::runtime::SetWeightLimit for RuntimeCall {
+	fn set_weight_limit(&mut self, new_weight_limit: Weight) -> Weight {
+		match self {
+			Self::Revive(
+				pallet_revive::Call::eth_call { weight_limit, .. } |
+				pallet_revive::Call::eth_instantiate_with_code { weight_limit, .. },
+			) => {
+				let old = *weight_limit;
+				*weight_limit = new_weight_limit;
+				old
+			},
+			_ => Default::default(),
+		}
+	}
 }
 
 cumulus_pallet_parachain_system::register_validate_block! {
