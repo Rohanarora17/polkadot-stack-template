@@ -28,20 +28,21 @@ The same `Counter.sol` compiled two ways:
 | | EVM (solc) | PVM (resolc) |
 |---|---|---|
 | **Source** | `contracts/evm/contracts/Counter.sol` | Same file |
-| **Toolchain** | [`contracts/evm/`](contracts/evm/) - Hardhat + solc | [`contracts/pvm/`](contracts/pvm/) - Hardhat + @parity/resolc |
+| **Toolchain** | [`contracts/evm/`](contracts/evm/) - Hardhat + solc + viem | [`contracts/pvm/`](contracts/pvm/) - Hardhat + @parity/resolc + viem |
 | **VM Backend** | REVM (Ethereum-compatible) | PolkaVM (RISC-V) |
 | **Deploy** | `npx hardhat ignition deploy` | `npx hardhat ignition deploy` |
 
 Both target **Polkadot Hub TestNet** (Chain ID: `420420417`) or your local dev node.
 
-### PAPI Frontend
+### Frontend
 
-A React + Vite + TypeScript + Tailwind CSS frontend using [Polkadot API (PAPI)](https://papi.how/) for chain interaction.
+A React + Vite + TypeScript + Tailwind CSS frontend.
 
 - **Source**: [`web/`](web/)
-- **Pages**: Chain dashboard, pallet counter interaction, EVM contract page, PVM contract page
+- **Pallet interaction**: [Polkadot API (PAPI)](https://papi.how/) with sr25519 dev accounts (Alice, Bob, Charlie)
+- **Contract interaction**: [viem](https://viem.sh/) through the eth-rpc proxy with Ethereum dev accounts
+- **Pages**: Chain dashboard, pallet counter, EVM contract, PVM contract
 - **State management**: Zustand
-- **Dev accounts**: Alice, Bob, Charlie (sr25519 dev keys)
 
 ### subxt CLI
 
@@ -110,6 +111,7 @@ SKIP_PALLET_REVIVE_FIXTURES=1 cargo test --workspace --features runtime-benchmar
 
 # Solidity tests (local Hardhat network)
 cd contracts/evm && npx hardhat test
+cd contracts/pvm && npx hardhat test
 ```
 
 ## Project Structure
@@ -144,6 +146,7 @@ polkadot-stack-template/
 | resolc | v1.0.0 |
 | PAPI | v1.23.3 |
 | React | v18.3 |
+| viem | v2.x |
 | Hardhat | v2.27+ |
 
 ## Resources
