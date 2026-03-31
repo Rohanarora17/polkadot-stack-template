@@ -9,7 +9,7 @@
     "dev": "vite",
     "dev:blockchain": "papi update && vite",
     "build": "papi && tsc -b && vite build",
-    "postinstall": "papi generate || true",
+    "postinstall": "test -f src/config/deployments.ts || echo 'export const deployments: { evm: string | null; pvm: string | null } = { evm: null, pvm: null };' > src/config/deployments.ts; papi generate || true",
     "lint": "eslint .",
     "preview": "vite preview"
   },
