@@ -1,10 +1,12 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { getClient, disconnectClient } from "./useChain";
 import { useChainStore } from "../store/chainStore";
 
 let stackTemplateDescriptorPromise: Promise<
   (typeof import("@polkadot-api/descriptors"))["stack_template"]
 > | null = null;
+
+let connectId = 0;
 
 async function getStackTemplateDescriptor() {
   if (!stackTemplateDescriptorPromise) {
@@ -17,19 +19,17 @@ async function getStackTemplateDescriptor() {
 }
 
 export function useConnection() {
-  const {
-    wsUrl,
-    connected,
-    setConnected,
-    setBlockNumber,
-    setPallets,
-  } = useChainStore();
-  const connectIdRef = useRef(0);
+  const setWsUrl = useChainStore((state) => state.setWsUrl);
+  const setConnected = useChainStore((state) => state.setConnected);
+  const setBlockNumber = useChainStore((state) => state.setBlockNumber);
+  const setPallets = useChainStore((state) => state.setPallets);
 
   const connect = useCallback(
     async (url: string) => {
-      const id = ++connectIdRef.current;
+      const id = ++connectId;
+      setWsUrl(url);
       setConnected(false);
+      setBlockNumber(0);
       setPallets({ templatePallet: null, revive: null });
 
       disconnectClient();
@@ -44,15 +44,14 @@ export function useConnection() {
           ),
         ]);
 
-        if (connectIdRef.current !== id) return { ok: false, chain: null };
+        if (connectId !== id) return { ok: false, chain: null };
 
         setConnected(true);
 
-        // Detect available pallets
+        const api = client.getTypedApi(descriptor);
         const detected = { templatePallet: false, revive: false };
 
         try {
-          const api = client.getTypedApi(descriptor);
           await api.query.TemplatePallet.Claims.getEntries();
           detected.templatePallet = true;
         } catch {
@@ -60,41 +59,57 @@ export function useConnection() {
         }
 
         try {
-          const api = client.getTypedApi(descriptor);
           await api.constants.Revive.DepositPerByte();
           detected.revive = true;
         } catch {
           detected.revive = false;
         }
 
-        if (connectIdRef.current !== id) return { ok: false, chain: null };
+        if (connectId !== id) return { ok: false, chain: null };
         setPallets(detected);
         return { ok: true, chain };
       } catch (e) {
-        if (connectIdRef.current !== id) return { ok: false, chain: null };
+        if (connectId !== id) return { ok: false, chain: null };
+        setConnected(false);
+        setBlockNumber(0);
         setPallets({ templatePallet: false, revive: false });
         throw e;
       }
     },
-    [setConnected, setPallets]
+    [setBlockNumber, setConnected, setPallets, setWsUrl]
   );
 
-  // Auto-connect on mount
+  return { connect };
+}
+
+export function useConnectionManagement() {
+  const wsUrl = useChainStore((state) => state.wsUrl);
+  const connected = useChainStore((state) => state.connected);
+  const setBlockNumber = useChainStore((state) => state.setBlockNumber);
+  const { connect } = useConnection();
+  const initialWsUrlRef = useRef(wsUrl);
+
+  useEffect(() => {
+    connect(initialWsUrlRef.current).catch(() => {});
+
+    return () => {
+      connectId += 1;
+      disconnectClient();
+    };
+  }, [connect]);
+
   useEffect(() => {
     if (!connected) {
-      connect(wsUrl).catch(() => {});
+      return;
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subscribe to blocks when connected
-  useEffect(() => {
-    if (!connected) return;
     const client = getClient(wsUrl);
     const subscription = client.finalizedBlock$.subscribe((block) => {
       setBlockNumber(block.number);
     });
-    return () => subscription.unsubscribe();
-  }, [connected, wsUrl, setBlockNumber]);
 
-  return { connect };
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [connected, setBlockNumber, wsUrl]);
 }

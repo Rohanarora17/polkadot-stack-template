@@ -11,7 +11,6 @@ export default function HomePage() {
   const {
     wsUrl,
     ethRpcUrl,
-    setWsUrl,
     setEthRpcUrl,
     connected,
     blockNumber,
@@ -44,7 +43,6 @@ export default function HomePage() {
   }, [connected, wsUrl]);
 
   async function handleConnect() {
-    setWsUrl(urlInput);
     setEthRpcUrl(ethRpcInput);
     setConnecting(true);
     setError(null);
