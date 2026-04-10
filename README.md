@@ -6,41 +6,13 @@ Students do not need to use every part of this repo. The runtime, pallet, contra
 
 ## What's Inside
 
-### Substrate Pallet
-
-A Polkadot SDK pallet template using FRAME, with a Proof of Existence pallet for creating and revoking claims on-chain.
-
-More: [`blockchain/README.md`](blockchain/README.md)
-
-### Parachain Runtime
-
-A Cumulus-based runtime that wires the pallet together with smart contract support and can be launched locally with `polkadot-omni-node`.
-
-More: [`blockchain/README.md`](blockchain/README.md)
-
-### Smart Contracts
-
-The same Proof of Existence example implemented as Solidity contracts for both EVM and PVM targets.
-
-More: [`contracts/README.md`](contracts/README.md)
-
-### Frontend
-
-A React web app for interacting with the pallet, contracts, Statement Store, and Bulletin Chain.
-
-More: [`web/README.md`](web/README.md)
-
-### CLI
-
-A Rust command-line tool for chain queries, pallet interactions, contract calls, Statement Store, and Bulletin Chain.
-
-More: [`cli/README.md`](cli/README.md)
-
-### Local Dev Scripts
-
-One-command scripts for quickly running the full stack.
-
-More: [`scripts/README.md`](scripts/README.md)
+- **Polkadot SDK Blockchain** ([`blockchain/`](blockchain/)) — A Cumulus-based parachain compatible with `polkadot-omni-node`
+  - **Substrate Pallet** ([`blockchain/pallets/template/`](blockchain/pallets/template/)) — FRAME pallet for creating and revoking Proof of Existence claims on-chain
+  - **Parachain Runtime** ([`blockchain/runtime/`](blockchain/runtime/)) — Runtime wiring the pallet with smart contract support via `pallet-revive`
+- **Smart Contracts** ([`contracts/`](contracts/)) — The same PoE example as Solidity, compiled to both EVM bytecode (solc) and PVM/RISC-V bytecode (resolc)
+- **Frontend** ([`web/`](web/)) — React + TypeScript app using PAPI for pallet interactions and viem for contract calls
+- **CLI** ([`cli/`](cli/)) — Rust CLI for chain queries, pallet operations, and contract calls via subxt and alloy
+- **Dev Scripts** ([`scripts/`](scripts/)) — One-command scripts to build, start, and test the full stack locally
 
 ## Quick Start
 
