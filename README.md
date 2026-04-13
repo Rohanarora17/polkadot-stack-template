@@ -33,6 +33,8 @@ Only Node.js is needed on the host. The Docker build compiles the Rust runtime a
 
 ### Prerequisites (native)
 
+- **OpenSSL** development headers (`libssl-dev` on Ubuntu, `openssl` on macOS)
+- **protoc** Protocol Buffers compiler (`protobuf-compiler` on Ubuntu, `protobuf` on macOS)
 - **Rust** (stable, installed via [rustup](https://rustup.rs/))
 - **Node.js** 22.x LTS (`22.5+` recommended) and npm v10.9.0+
 - **polkadot** v1.21.3 ([download](https://github.com/paritytech/polkadot-sdk/releases/tag/polkadot-stable2512-3)) for the local relay chain

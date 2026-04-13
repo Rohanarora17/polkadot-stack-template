@@ -19,6 +19,20 @@ If you prefer to install everything natively (faster iteration, required for run
 
 ## Prerequisites
 
+### System Dependencies
+
+The Rust build requires OpenSSL development headers and the Protocol Buffers compiler.
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install -y libssl-dev protobuf-compiler
+```
+
+**macOS:**
+```bash
+brew install openssl protobuf
+```
+
 ### Rust
 
 Install Rust via [rustup](https://rustup.rs/):
