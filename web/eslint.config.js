@@ -9,6 +9,15 @@ export default tseslint.config(
 	reactHooks.configs.flat["recommended-latest"],
 	eslintConfigPrettier,
 	{
-		ignores: ["dist/", "node_modules/", ".papi/"],
+		ignores: ["dist/", "node_modules/", ".papi/", "zk/build/"],
+	},
+	{
+		files: ["scripts/**/*.mjs"],
+		languageOptions: {
+			globals: {
+				console: "readonly",
+				process: "readonly",
+			},
+		},
 	},
 );
