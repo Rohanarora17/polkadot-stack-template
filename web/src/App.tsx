@@ -11,11 +11,10 @@ export default function App() {
 
 	const navItems = [
 		{ path: "/", label: "Home", enabled: true },
-		{ path: "/pallet", label: "Pallet PoE", enabled: pallets.templatePallet === true },
-		{ path: "/evm", label: "EVM PoE", enabled: pallets.revive === true },
-		{ path: "/pvm", label: "PVM PoE", enabled: pallets.revive === true },
-		{ path: "/statements", label: "Statements", enabled: true },
-		{ path: "/accounts", label: "Accounts", enabled: true },
+		{ path: "/wallet", label: "Wallet", enabled: true },
+		{ path: "/send", label: "Send Gift", enabled: pallets.revive === true },
+		{ path: "/claim", label: "Claim", enabled: pallets.revive === true },
+		{ path: "/advanced", label: "Advanced", enabled: true },
 	];
 
 	return (
@@ -43,9 +42,14 @@ export default function App() {
 								<circle cx="8" cy="8" r="1.5" opacity="0.6" />
 							</svg>
 						</div>
-						<span className="text-base font-semibold text-text-primary font-display tracking-tight">
-							Polkadot Stack
-						</span>
+						<div className="leading-tight">
+							<div className="text-base font-semibold text-text-primary font-display tracking-tight">
+								StealthPay
+							</div>
+							<div className="text-[11px] uppercase tracking-[0.16em] text-text-muted">
+								Built on the Polkadot Stack
+							</div>
+						</div>
 					</Link>
 
 					<div className="flex gap-0.5 overflow-x-auto">
