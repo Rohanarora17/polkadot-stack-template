@@ -1,4 +1,10 @@
 {
-  "evm": null,
-  "pvm": null
+  "evm": "0xc01ee7f10ea4af4673cfff62710e1d7792aba8f3",
+  "pvm": "0x970951a12f975e6762482aca81e57d5a2a4e73f4",
+  "stealthPayEvm": "0x51eb5588223857cef11d6cc9bb544def2c29d5db",
+  "stealthPayPvm": "0x6d89075c2976bae4de22ae556566c89807f6ba5e",
+  "stealthPayPoolEvm": "0x32f2caa6926c53e2f8520e9e4c981e112a0fef71",
+  "stealthPayPoolPvm": "0xaa27b728009493585ea78d2ecd809f5d09f1580a",
+  "withdrawVerifierEvm": "0xf2efc344fe227c8e75567e12eca6d1a3e120a0f3",
+  "withdrawVerifierPvm": "0x6a1d2c5f1867a522655855e51e5f64dff253590b"
 }
