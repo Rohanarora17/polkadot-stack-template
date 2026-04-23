@@ -1,8 +1,12 @@
 import type { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-verify";
+import path from "node:path";
+import dotenv from "dotenv";
 import { vars } from "hardhat/config";
 import { defineChain } from "viem";
+
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 export const polkadotHubTestnet = defineChain({
 	id: 420420417,
