@@ -8,10 +8,39 @@ node_modules/
 dist/
 .parcel-cache/
 *.tsbuildinfo
+web/output/
+web/zk/build/
+web/zk/ptau/
 
 # Environment
 .env
 .env.local
+
+# Local wallet exports and generated private gift backups
+/*Gp*.json
+/stealthpay-note-*.json
+
+# Local experiment outputs and downloaded archives
+/deployments.native-pool.json
+/*.tar.gz
+
+# Local AI/planning docs that are not part of the template history
+/AGENTS.md
+/AGENTS (1).md
+/CLAUDE (1).md
+/WORKFLOW.md
+/StealthPay-PRD.md
+/docs/ARCHITECTURE.md
+/docs/BUG_REPORTS.md
+/docs/CRYPTO.md
+/docs/PRIVATE_WALLET_IMPLEMENTATION_PLAN.md
+/docs/PRIVATE_WALLET_UX_SPEC.md
+/docs/STEALTHPAY_JOURNEY.md
+/docs/ZK_RESEARCH_BRIEF.md
+/docs/upstream-issue-drafts/
+/scripts/ai-harness.sh
+/scripts/setup-ai-rules.sh
+/scripts/Lecture16-annotated.pdf
 
 # IDE
 .idea/
