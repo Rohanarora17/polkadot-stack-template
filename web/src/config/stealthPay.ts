@@ -1,0 +1,87 @@
+export const stealthPayAbi = [
+	{
+		type: "function",
+		name: "setMetaAddress",
+		inputs: [
+			{ name: "spendingPubKey", type: "bytes" },
+			{ name: "viewingPubKey", type: "bytes" },
+		],
+		outputs: [],
+		stateMutability: "nonpayable",
+	},
+	{
+		type: "function",
+		name: "clearMetaAddress",
+		inputs: [],
+		outputs: [],
+		stateMutability: "nonpayable",
+	},
+	{
+		type: "function",
+		name: "announceAndPay",
+		inputs: [
+			{ name: "stealthAddress", type: "address" },
+			{ name: "ephemeralPubKey", type: "bytes" },
+			{ name: "viewTag", type: "uint8" },
+			{ name: "memoHash", type: "bytes32" },
+		],
+		outputs: [],
+		stateMutability: "payable",
+	},
+	{
+		type: "function",
+		name: "announcePrivateDeposit",
+		inputs: [
+			{ name: "pool", type: "address" },
+			{ name: "commitment", type: "bytes32" },
+			{ name: "ephemeralPubKey", type: "bytes" },
+			{ name: "viewTag", type: "uint8" },
+			{ name: "memoHash", type: "bytes32" },
+		],
+		outputs: [],
+		stateMutability: "payable",
+	},
+	{
+		type: "function",
+		name: "metaAddressOf",
+		inputs: [{ name: "owner", type: "address" }],
+		outputs: [{ name: "", type: "bytes" }],
+		stateMutability: "view",
+	},
+	{
+		type: "function",
+		name: "hasMetaAddress",
+		inputs: [{ name: "who", type: "address" }],
+		outputs: [{ name: "", type: "bool" }],
+		stateMutability: "view",
+	},
+	{
+		type: "function",
+		name: "announcementCount",
+		inputs: [],
+		outputs: [{ name: "", type: "uint256" }],
+		stateMutability: "view",
+	},
+	{
+		type: "event",
+		name: "MetaAddressSet",
+		inputs: [
+			{ indexed: true, name: "owner", type: "address" },
+			{ indexed: false, name: "spendingPubKey", type: "bytes" },
+			{ indexed: false, name: "viewingPubKey", type: "bytes" },
+		],
+	},
+	{
+		type: "event",
+		name: "Announcement",
+		inputs: [
+			{ indexed: true, name: "schemeId", type: "uint256" },
+			{ indexed: false, name: "sender", type: "address" },
+			{ indexed: false, name: "stealthAddress", type: "address" },
+			{ indexed: false, name: "ephemeralPubKey", type: "bytes" },
+			{ indexed: false, name: "viewTag", type: "uint8" },
+			{ indexed: false, name: "memoHash", type: "bytes32" },
+			{ indexed: false, name: "nonce", type: "uint256" },
+		],
+	},
+] as const;
