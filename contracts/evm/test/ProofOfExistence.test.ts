@@ -19,7 +19,10 @@ describe("ProofOfExistence (EVM)", function () {
 
 	it("Should return zero for unclaimed hash", async function () {
 		const { poe } = await loadFixture(deployFixture);
-		const [owner, blockNumber] = await poe.read.getClaim([testHash]);
+		const [owner, blockNumber] = (await poe.read.getClaim([testHash])) as readonly [
+			string,
+			bigint,
+		];
 		expect(owner).to.equal("0x0000000000000000000000000000000000000000");
 		expect(blockNumber).to.equal(0n);
 	});
@@ -27,7 +30,10 @@ describe("ProofOfExistence (EVM)", function () {
 	it("Should create a claim", async function () {
 		const { poe, owner } = await loadFixture(deployFixture);
 		await poe.write.createClaim([testHash]);
-		const [claimOwner, blockNumber] = await poe.read.getClaim([testHash]);
+		const [claimOwner, blockNumber] = (await poe.read.getClaim([testHash])) as readonly [
+			string,
+			bigint,
+		];
 		expect(getAddress(claimOwner)).to.equal(getAddress(owner.account.address));
 		expect(blockNumber).to.not.equal(0n);
 	});
@@ -56,7 +62,7 @@ describe("ProofOfExistence (EVM)", function () {
 		const { poe } = await loadFixture(deployFixture);
 		await poe.write.createClaim([testHash]);
 		await poe.write.revokeClaim([testHash]);
-		const [owner] = await poe.read.getClaim([testHash]);
+		const [owner] = (await poe.read.getClaim([testHash])) as readonly [string, bigint];
 		expect(owner).to.equal("0x0000000000000000000000000000000000000000");
 		expect(await poe.read.getClaimCount()).to.equal(0n);
 	});
@@ -92,7 +98,7 @@ describe("ProofOfExistence (EVM)", function () {
 			abi: poe.abi,
 			logs: receipt.logs,
 			eventName: "ClaimCreated",
-		});
+		}) as Array<{ args: { who: string; hash: `0x${string}` } }>;
 		expect(logs).to.have.lengthOf(1);
 		expect(getAddress(logs[0].args.who)).to.equal(getAddress(owner.account.address));
 		expect(logs[0].args.hash).to.equal(testHash);
@@ -107,7 +113,7 @@ describe("ProofOfExistence (EVM)", function () {
 			abi: poe.abi,
 			logs: receipt.logs,
 			eventName: "ClaimRevoked",
-		});
+		}) as Array<{ args: { who: string; hash: `0x${string}` } }>;
 		expect(logs).to.have.lengthOf(1);
 		expect(getAddress(logs[0].args.who)).to.equal(getAddress(owner.account.address));
 		expect(logs[0].args.hash).to.equal(testHash);
