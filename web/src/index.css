@@ -114,6 +114,51 @@
   .status-badge {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+
+  .gift-panel {
+    @apply rounded-2xl border p-6;
+    background:
+      radial-gradient(circle at top right, rgba(230, 0, 122, 0.18), transparent 32%),
+      radial-gradient(circle at bottom left, rgba(76, 194, 255, 0.12), transparent 28%),
+      linear-gradient(135deg, rgba(22, 18, 34, 0.95) 0%, rgba(14, 14, 22, 0.92) 100%);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 18px 60px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .gift-step {
+    @apply rounded-xl border border-white/[0.08] bg-white/[0.03] p-4;
+  }
+
+  .gift-chip {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
+    background: rgba(230, 0, 122, 0.12);
+    color: rgba(255, 212, 235, 0.95);
+    border: 1px solid rgba(230, 0, 122, 0.2);
+  }
+
+  .gift-share-card {
+    @apply rounded-2xl border p-5;
+    background:
+      linear-gradient(160deg, rgba(230, 0, 122, 0.14) 0%, rgba(76, 194, 255, 0.08) 100%),
+      rgba(12, 12, 18, 0.88);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 14px 40px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .gift-success-card {
+    @apply rounded-2xl border p-5;
+    background:
+      radial-gradient(circle at top left, rgba(52, 211, 153, 0.14), transparent 35%),
+      linear-gradient(135deg, rgba(14, 24, 20, 0.92) 0%, rgba(10, 16, 14, 0.9) 100%);
+    border-color: rgba(52, 211, 153, 0.22);
+    box-shadow:
+      0 16px 42px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
 }
 
 /* Background pattern — subtle dot grid */
