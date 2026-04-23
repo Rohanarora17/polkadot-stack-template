@@ -1,10 +1,12 @@
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
-export const LOCAL_WS_URL = import.meta.env.VITE_LOCAL_WS_URL || "ws://localhost:9944";
-export const LOCAL_ETH_RPC_URL = import.meta.env.VITE_LOCAL_ETH_RPC_URL || "http://localhost:8545";
+export const LOCAL_WS_URL = import.meta.env.VITE_LOCAL_WS_URL || "ws://127.0.0.1:9944";
+export const LOCAL_ETH_RPC_URL = import.meta.env.VITE_LOCAL_ETH_RPC_URL || "http://127.0.0.1:8545";
+export const LOCAL_CHAIN_ID = 420420421n;
 
-export const TESTNET_WS_URL = "wss://asset-hub-paseo.dotters.network";
+export const TESTNET_WS_URL = "wss://asset-hub-paseo-rpc.n.dwellir.com";
 export const TESTNET_ETH_RPC_URL = "https://services.polkadothub-rpc.com/testnet";
+export const TESTNET_CHAIN_ID = 420420417n;
 
 export type NetworkPreset = "local" | "testnet";
 
@@ -57,4 +59,16 @@ export function getStoredWsUrl() {
 
 export function getStoredEthRpcUrl() {
 	return getStoredUrl("eth-rpc-url", "default-eth-rpc-url", getDefaultEthRpcUrl());
+}
+
+export function getKnownChainIdForEthRpcUrl(ethRpcUrl: string): bigint | null {
+	if (ethRpcUrl.includes("127.0.0.1") || ethRpcUrl.includes("localhost")) {
+		return LOCAL_CHAIN_ID;
+	}
+
+	if (ethRpcUrl === TESTNET_ETH_RPC_URL || ethRpcUrl.includes("polkadothub-rpc.com/testnet")) {
+		return TESTNET_CHAIN_ID;
+	}
+
+	return null;
 }

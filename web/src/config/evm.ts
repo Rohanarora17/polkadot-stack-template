@@ -1,4 +1,13 @@
-import { createPublicClient, createWalletClient, http, defineChain, type Chain } from "viem";
+import {
+	custom,
+	createPublicClient,
+	createWalletClient,
+	http,
+	defineChain,
+	type Chain,
+	type Address,
+	type Hex,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getStoredEthRpcUrl } from "./network";
 
@@ -72,8 +81,18 @@ let publicClientUrl: string | null = null;
 let chainCache: Chain | null = null;
 let chainCacheUrl: string | null = null;
 
+type EthereumProvider = {
+	request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+};
+
 function isLocalEthRpcUrl(url: string) {
 	return url.includes("127.0.0.1") || url.includes("localhost");
+}
+
+function getNativeCurrency(ethRpcUrl: string) {
+	return isLocalEthRpcUrl(ethRpcUrl)
+		? { name: "Unit", symbol: "UNIT", decimals: 18 as const }
+		: { name: "Paseo", symbol: "PAS", decimals: 18 as const };
 }
 
 export function getPublicClient(ethRpcUrl = getStoredEthRpcUrl()) {
@@ -93,12 +112,59 @@ async function getChain(ethRpcUrl = getStoredEthRpcUrl()): Promise<Chain> {
 		chainCache = defineChain({
 			id: chainId,
 			name: isLocalEthRpcUrl(ethRpcUrl) ? "Local Parachain" : "Polkadot Hub TestNet",
-			nativeCurrency: { name: "Unit", symbol: "UNIT", decimals: 18 },
+			nativeCurrency: getNativeCurrency(ethRpcUrl),
 			rpcUrls: { default: { http: [ethRpcUrl] } },
 		});
 		chainCacheUrl = ethRpcUrl;
 	}
 	return chainCache;
+}
+
+function getInjectedEthereumProvider() {
+	return window.ethereum ?? null;
+}
+
+function toChainHex(chainId: number) {
+	return `0x${chainId.toString(16)}` as const;
+}
+
+async function ensureInjectedWalletChain(provider: EthereumProvider, chain: Chain) {
+	const expectedChainId = toChainHex(chain.id);
+	const currentChainId = (await provider.request({
+		method: "eth_chainId",
+	})) as string;
+
+	if (currentChainId === expectedChainId) {
+		return;
+	}
+
+	try {
+		await provider.request({
+			method: "wallet_switchEthereumChain",
+			params: [{ chainId: expectedChainId }],
+		});
+	} catch (cause) {
+		const errorCode =
+			typeof cause === "object" && cause !== null && "code" in cause
+				? Number((cause as { code?: unknown }).code)
+				: undefined;
+
+		if (errorCode !== 4902) {
+			throw cause;
+		}
+
+		await provider.request({
+			method: "wallet_addEthereumChain",
+			params: [
+				{
+					chainId: expectedChainId,
+					chainName: chain.name,
+					nativeCurrency: chain.nativeCurrency,
+					rpcUrls: chain.rpcUrls.default.http,
+				},
+			],
+		});
+	}
 }
 
 export async function getWalletClient(accountIndex: number, ethRpcUrl = getStoredEthRpcUrl()) {
@@ -108,4 +174,54 @@ export async function getWalletClient(accountIndex: number, ethRpcUrl = getStore
 		chain,
 		transport: http(ethRpcUrl),
 	});
+}
+
+export async function getWalletClientForPrivateKey(
+	privateKey: Hex,
+	ethRpcUrl = getStoredEthRpcUrl(),
+) {
+	const chain = await getChain(ethRpcUrl);
+	return createWalletClient({
+		account: privateKeyToAccount(privateKey),
+		chain,
+		transport: http(ethRpcUrl),
+	});
+}
+
+export async function getInjectedWalletClient(
+	ethRpcUrl = getStoredEthRpcUrl(),
+	requestedAccount?: Address,
+) {
+	const provider = getInjectedEthereumProvider();
+	if (!provider) {
+		throw new Error(
+			"No injected EVM wallet was found. Open MetaMask or another EIP-1193 wallet.",
+		);
+	}
+
+	const chain = await getChain(ethRpcUrl);
+	await ensureInjectedWalletChain(provider, chain);
+
+	const accounts = (await provider.request({
+		method: "eth_requestAccounts",
+	})) as Address[];
+	const account =
+		(requestedAccount
+			? accounts.find(
+					(candidate) => candidate.toLowerCase() === requestedAccount.toLowerCase(),
+				)
+			: undefined) ?? accounts[0];
+
+	if (!account) {
+		throw new Error("The injected EVM wallet did not return any accounts.");
+	}
+
+	return {
+		account,
+		walletClient: createWalletClient({
+			account,
+			chain,
+			transport: custom(provider),
+		}),
+	};
 }
