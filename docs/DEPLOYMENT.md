@@ -87,6 +87,12 @@ The quickest way to get everything running (node, contracts, and frontend):
 ./scripts/start-all.sh
 ```
 
+If you know you will need historical block-state inspection in the explorer or runtime-event debugging across a longer local run, use:
+
+```bash
+./scripts/start-all-archive.sh
+```
+
 Or deploy contracts manually against a running node:
 
 ```bash
@@ -99,21 +105,44 @@ eth-rpc --node-rpc-url "${SUBSTRATE_RPC_WS:-ws://127.0.0.1:9944}" --rpc-port "${
 # Deploy contracts (terminal 3)
 cd contracts/evm && npm install && npm run deploy:local
 cd contracts/pvm && npm install && npm run deploy:local
+cd contracts/evm && npx hardhat run scripts/deploy-private-pool.ts
+cd contracts/pvm && npx hardhat run scripts/deploy-private-pool.ts
 ```
 
 Deploy scripts automatically write contract addresses to `deployments.json` (for CLI) and `web/src/config/deployments.ts` (for frontend). The frontend contract pages auto-populate the address field from those shared files.
 
-### Polkadot TestNet
+For the private-withdraw demo path, also start the local relayer:
 
 ```bash
-# Set your private key in each contract directory
-cd contracts/evm && npx hardhat vars set PRIVATE_KEY
-cd contracts/pvm && npx hardhat vars set PRIVATE_KEY
+./scripts/start-relayer.sh
+```
 
-# Get testnet tokens
-# Visit: https://faucet.polkadot.io/
+### Polkadot TestNet
 
-# Deploy both contracts
+1. Copy the repo-level env template and fill in your deployer key:
+
+```bash
+cd /Users/rohan/polkadot-stack-template
+cp .env.example .env
+```
+
+Then set at least:
+
+```bash
+PRIVATE_KEY=0x...
+```
+
+The Hardhat configs in both `contracts/evm` and `contracts/pvm` now load the repo-root
+`.env` automatically. They still accept Hardhat vars as a fallback, but `.env` is the
+recommended path.
+
+2. Get testnet tokens for that account:
+
+- Visit: [https://faucet.polkadot.io/](https://faucet.polkadot.io/)
+
+3. Deploy both contracts:
+
+```bash
 ./scripts/deploy-paseo.sh
 ```
 
@@ -121,6 +150,16 @@ TestNet details:
 - **RPC**: `https://services.polkadothub-rpc.com/testnet`
 - **Chain ID**: `420420417`
 - **Explorer**: [blockscout-testnet.polkadot.io](https://blockscout-testnet.polkadot.io/)
+
+For the StealthPay private-withdraw stack on Paseo, deploy:
+
+- `StealthPay`
+- `WithdrawVerifier`
+- `StealthPayPoolV1`
+
+using the new `deploy-private-pool.ts` scripts in each contract package, then update the frontend
+to use the resulting pool address and start the relayer with a funded `RELAYER_PRIVATE_KEY`
+in the same repo-root `.env`.
 
 ## Parachain Runtime
 
@@ -204,12 +243,31 @@ Both Docker setups mirror the lightweight solo-node mode. They use `--dev-block-
 ```
 
 Use `./scripts/start-all.sh` if you want the relay-backed network plus contract deployment and frontend startup in one command.
+Use `./scripts/start-all-archive.sh` or `./scripts/start-local-archive.sh` if you want the same relay-backed topology but need historical state retained for explorer or runtime-event debugging.
 
 If you need a second relay-backed stack at the same time:
 
 ```bash
 STACK_PORT_OFFSET=100 ./scripts/start-local.sh
 ```
+
+### Archive local mode
+
+The default relay-backed local scripts keep the lighter node defaults, so historical state can be pruned during a longer run. If you know you will need to inspect older blocks in an explorer or query historical `System.Events`, use the archive wrappers:
+
+```bash
+./scripts/start-all-archive.sh
+./scripts/start-local-archive.sh
+```
+
+These wrappers set `STACK_ARCHIVE_MODE=1`, which adds:
+
+```bash
+--state-pruning archive
+--blocks-pruning archive
+```
+
+to the local collator. This keeps historical state available for that archive-mode run. It does not restore state that was already pruned in a previous run.
 
 ## Bulletin Chain (IPFS Upload)
 

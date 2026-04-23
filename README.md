@@ -4,11 +4,66 @@ A developer starter template demonstrating the full Polkadot technology stack th
 
 Students do not need to use every part of this repo. The runtime, pallet, contracts, frontend, CLI, Bulletin integration, Spektr integration, and deployment workflows are intentionally separated so teams can keep only the slices they want.
 
+## StealthPay Status
+
+This repo now also contains a working local-first StealthPay slice alongside the original Proof of Existence template:
+
+- `Register`: derive a stealth meta-address from a dedicated seed and register it on the PVM contract
+- `Private Send`: look up the recipient meta-address, derive a private delivery secret, encrypt the pool note plus optional text memo, upload it to Bulletin Chain, and call `announcePrivateDeposit`
+- `Private Withdraw`: scan direct sender-to-pool announcements, decrypt the delivered pool note, generate a Groth16 proof, and withdraw through a relayer to a fresh destination
+- `Public Recovery`: keep the older stealth-address recovery flow available as an advanced escape hatch for debugging and non-private fund recovery
+
+Current StealthPay gaps:
+
+- QR-paired Pwallet is not implemented yet
+- the hidden stealth-to-pool shield-hop fallback is not active yet; the current judge-facing path is the direct sender-to-pool flow
+- on the local `Revive.call(...)` path, `eth-rpc` does not expose the relevant contract logs, so private withdraw falls back to runtime event decoding for both announcements and pool deposits
+- on Paseo, the registered-recipient private-send route now works through the same Substrate signer for Bulletin upload and `Revive.call(...)`; the app applies the measured Paseo `msg.value` scale (`Revive.call.value * 1e8`)
+
+The product shell now exposes StealthPay through:
+
+- `Wallet`
+- `Send Gift`
+- `Claim`
+- `Advanced`
+
+The older technical pages still exist underneath, but the top-level navigation is now aligned to the private-wallet direction rather than the raw protocol steps.
+
+The current UX hardening pass also simplified the main working pages:
+
+- `Send Gift` now hides contract addresses, transport choices, and raw claim internals behind advanced sections
+- `Send Gift` now also has a gift-creation hero, simple three-step framing, recommended sender defaults, and a more narrative “gift created” state
+- `Send Gift` now supports two privacy-preserving gift modes:
+    - registered-recipient gifts keep the current meta-address targeting model
+    - walletless bearer gifts create a sensitive claim link for recipients who do not have a wallet yet
+- registered-recipient gifts now accept normal recipient identifiers:
+    - EVM/H160 wallet addresses
+    - Substrate extension accounts, resolved through `ReviveApi.address`
+    - DotNS names such as `alice.dot`, `alice.paseo.li`, or `alice`
+- if a recipient identifier resolves but that wallet has not registered a StealthPay private inbox, the send flow now routes the sender toward a walletless bearer gift link instead of ending in a technical error
+- `Claim` now hides scan/proof details by default; registered-recipient gifts can be claimed directly, while walletless bearer gifts still require saving the generated claim wallet before payout
+- `Send Gift` now also produces a shareable gift link that lands on `#/gift` before continuing into the wallet-connected `#/claim` flow with pool, registry, and transaction context preloaded
+- when a registered-recipient claim link is opened, `Claim` now uses a more guided path: unlock wallet, auto-search the linked gift, then claim privately through the relayer
+- walletless bearer gifts claim to a fresh generated local wallet by default, with an encrypted recovery file required before claim
+- the route split is now explicit:
+    - `#/claim` is the consumer gift-opening flow
+    - `#/withdraw` remains the advanced technical claim/recovery surface
+- on the consumer route, the happy path now defaults to the browser-extension wallet, keeps destination override behind disclosure, and moves recovery seed import deeper into recovery/troubleshooting settings
+- the consumer route now also has a more gift-like presentation: a dedicated opening hero, a simple three-step narrative, and clearer private-claim success framing
+- the sender/recipient handoff is now more product-like too:
+    - `Send Gift` presents the claim link as a branded share card instead of just a raw URL
+    - the shared link now lands on a dedicated `#/gift` handoff page before the wallet-connected `#/claim` flow
+    - `Claim` shows a clearer “gift claimed privately” completion state after successful withdrawal
+- the current distribution polish also now includes:
+    - native browser share support where available
+    - adaptive wallet-environment guidance on the `#/gift` page: if the browser cannot see an extension wallet, the primary action becomes copy/reopen instead of pushing the user into a dead-end claim
+    - earlier unsupported-browser handling on `#/claim`, including a clearer reopen/copy/recovery branch instead of empty wallet selectors
+
 ## What's Inside
 
 - **Polkadot SDK Blockchain** ([`blockchain/`](blockchain/)) — A Cumulus-based parachain compatible with `polkadot-omni-node`
-  - **Substrate Pallet** ([`blockchain/pallets/template/`](blockchain/pallets/template/)) — FRAME pallet for creating and revoking Proof of Existence claims on-chain
-  - **Parachain Runtime** ([`blockchain/runtime/`](blockchain/runtime/)) — Runtime wiring the pallet with smart contract support via `pallet-revive`
+    - **Substrate Pallet** ([`blockchain/pallets/template/`](blockchain/pallets/template/)) — FRAME pallet for creating and revoking Proof of Existence claims on-chain
+    - **Parachain Runtime** ([`blockchain/runtime/`](blockchain/runtime/)) — Runtime wiring the pallet with smart contract support via `pallet-revive`
 - **Smart Contracts** ([`contracts/`](contracts/)) — The same PoE example as Solidity, compiled to both EVM bytecode (solc) and PVM/RISC-V bytecode (resolc)
 - **Frontend** ([`web/`](web/)) — React + TypeScript app using PAPI for pallet interactions and viem for contract calls
 - **CLI** ([`cli/`](cli/)) — Rust CLI for chain queries, pallet operations, and contract calls via subxt and alloy
@@ -39,11 +94,11 @@ Only Node.js is needed on the host. The Docker build compiles the Rust runtime a
 - **Node.js** 22.x LTS (`22.5+` recommended) and npm v10.9.0+
 - **Polkadot SDK binaries** (stable2512-3): `polkadot`, `polkadot-prepare-worker`, `polkadot-execute-worker` (relay), `polkadot-omni-node`, `eth-rpc`, `chain-spec-builder`, and `zombienet`. Fetch them all into `./bin/` (gitignored) with:
 
-  ```bash
-  ./scripts/download-sdk-binaries.sh
-  ```
+    ```bash
+    ./scripts/download-sdk-binaries.sh
+    ```
 
-  This is the primary supported native setup for this repo. The stack scripts (`start-all.sh`, `start-local.sh`, etc.) run the same step automatically unless you set `STACK_DOWNLOAD_SDK_BINARIES=0`. Versions match the **Key Versions** table below.
+    This is the primary supported native setup for this repo. The stack scripts (`start-all.sh`, `start-local.sh`, etc.) run the same step automatically unless you set `STACK_DOWNLOAD_SDK_BINARIES=0`. Versions match the **Key Versions** table below.
 
 If your platform cannot use the downloader-managed binaries, see the limited-support fallback in [docs/INSTALL.md](docs/INSTALL.md#manual-binary-fallback-limited-support).
 
@@ -54,12 +109,15 @@ The repo includes [`.nvmrc`](.nvmrc) and `engines` fields in the JavaScript proj
 ```bash
 # Start everything: node, contracts, and frontend in one command
 ./scripts/start-all.sh
+# For explorer/debug runs that need historical block state:
+./scripts/start-all-archive.sh
 # Substrate RPC: ws://127.0.0.1:9944
 # Ethereum RPC:  http://127.0.0.1:8545
 # Frontend:      http://127.0.0.1:5173
 ```
 
 `start-all.sh` is the recommended full-feature local path. It uses Zombienet under the hood so the Statement Store example works on `polkadot-sdk stable2512-3`.
+If you know you will need historical block-state inspection in the explorer or runtime-event debugging over a longer run, use `./scripts/start-all-archive.sh` instead.
 
 For the solo-node loop, relay-backed network, frontend-only startup, port overrides, or a second local stack, see [`scripts/README.md`](scripts/README.md).
 
@@ -68,6 +126,33 @@ For component-specific next steps, see:
 - [`contracts/README.md`](contracts/README.md)
 - [`web/README.md`](web/README.md)
 - [`cli/README.md`](cli/README.md)
+
+### StealthPay private-send demo
+
+After `./scripts/start-all.sh`, start the local relayer in a second terminal:
+
+```bash
+./scripts/start-relayer.sh
+```
+
+For Paseo deployment and relayer use, the repo now reads secrets from a single repo-root
+`.env` file. Copy [`.env.example`](.env.example) to `.env`, then fill in `PRIVATE_KEY` for
+contract deployment and `RELAYER_PRIVATE_KEY` for the relayer.
+
+Then the current local private-send demo loop is:
+
+1. Open `http://127.0.0.1:5173/#/register`
+2. Register a recipient with either the local dev signer or a funded browser extension account
+3. Keep the shown stealth seed backup if you want to restore the same recipient on another browser
+4. Open `http://127.0.0.1:5173/#/send`
+5. Send to the registered recipient through the privacy pool and optionally add a short private text memo
+6. If using a real Substrate signer for memo upload, authorize that Substrate account first on Bulletin Paseo
+7. On Paseo, the `Substrate Revive.call` path can submit the actual pool deposit with the same Substrate account used for Bulletin upload
+8. Copy the generated claim link or open `http://127.0.0.1:5173/#/claim`
+9. Use the same recipient signer (or import the saved stealth seed), let the claim page preload the gift context, unlock the wallet, and claim privately through the relayer
+10. Use `http://127.0.0.1:5173/#/scan` only when you need the older public recovery path
+
+The claim page uses the recent block range only to find incoming gift announcements. Pool deposit history is scanned from the start so the app can reconstruct the full Merkle path for older pool leaves automatically.
 
 ### Lint & format
 
@@ -123,23 +208,23 @@ cd contracts/pvm && npx hardhat test
 
 ## Key Versions
 
-| Component | Version |
-|---|---|
-| polkadot-sdk | stable2512-3 (umbrella crate v2512.3.3) |
-| polkadot | v1.21.3 (relay chain binary) |
-| polkadot-omni-node | v1.21.3 (from stable2512-3 release) |
-| eth-rpc | v0.12.0 (Ethereum JSON-RPC adapter) |
-| chain-spec-builder | v16.0.0 |
-| zombienet | v1.3.133 |
-| pallet-revive | v0.12.2 (EVM + PVM smart contracts) |
-| Node.js | 22.x LTS |
-| Solidity | v0.8.28 |
-| resolc | v1.0.0 |
-| PAPI | v1.23.3 |
-| React | v18.3 |
-| viem | v2.x |
-| alloy | v1.8 |
-| Hardhat | v2.27+ |
+| Component          | Version                                 |
+| ------------------ | --------------------------------------- |
+| polkadot-sdk       | stable2512-3 (umbrella crate v2512.3.3) |
+| polkadot           | v1.21.3 (relay chain binary)            |
+| polkadot-omni-node | v1.21.3 (from stable2512-3 release)     |
+| eth-rpc            | v0.12.0 (Ethereum JSON-RPC adapter)     |
+| chain-spec-builder | v16.0.0                                 |
+| zombienet          | v1.3.133                                |
+| pallet-revive      | v0.12.2 (EVM + PVM smart contracts)     |
+| Node.js            | 22.x LTS                                |
+| Solidity           | v0.8.28                                 |
+| resolc             | v1.0.0                                  |
+| PAPI               | v1.23.3                                 |
+| React              | v18.3                                   |
+| viem               | v2.x                                    |
+| alloy              | v1.8                                    |
+| Hardhat            | v2.27+                                  |
 
 ## Resources
 
@@ -149,6 +234,23 @@ cd contracts/pvm && npx hardhat test
 - [Polkadot Faucet](https://faucet.polkadot.io/) (TestNet tokens)
 - [Blockscout Explorer](https://blockscout-testnet.polkadot.io/) (Polkadot TestNet)
 - [Bulletin Chain Authorization](https://paritytech.github.io/polkadot-bulletin-chain/) - On Bulletin Paseo, use `Faucet` -> `Authorize Account` to request a temporary upload allowance for the Substrate account that will sign the upload.
+
+## StealthPay Public Event Indexing
+
+StealthPay does not use a private database for gifts or notes. The frontend only indexes public events:
+
+- first: optional Blockscout address logs on Paseo
+- fallback: direct `eth_getLogs`
+- fallback: direct `Revive.ContractEmitted` runtime-event decoding
+
+Configure the hosted indexer path in `web/.env.local` if needed:
+
+```bash
+VITE_STEALTHPAY_INDEXER_KIND=blockscout
+VITE_STEALTHPAY_INDEXER_URL=https://blockscout-testnet.polkadot.io
+```
+
+Set `VITE_STEALTHPAY_INDEXER_KIND=none` to force direct RPC/runtime scanning.
 
 ## License
 
