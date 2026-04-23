@@ -2,6 +2,8 @@ import { createClient, type PolkadotClient, type PolkadotSigner, Binary, Enum } 
 import { getWsProvider } from "polkadot-api/ws-provider/web";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { bulletin } from "@polkadot-api/descriptors";
+import { hexHashToCid, ipfsUrl } from "../utils/cid";
+import { hashBytes } from "../utils/hash";
 
 const BULLETIN_WS = "wss://paseo-bulletin-rpc.polkadot.io";
 const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8 MiB
@@ -18,6 +20,21 @@ function getBulletinClient(): PolkadotClient {
 
 function getBulletinApi() {
 	return getBulletinClient().getTypedApi(bulletin);
+}
+
+export type BulletinBlobRef = {
+	cid: string;
+	memoHash: `0x${string}`;
+	sizeBytes: number;
+};
+
+export function buildBulletinBlobRef(bytes: Uint8Array): BulletinBlobRef {
+	const memoHash = hashBytes(bytes);
+	return {
+		cid: hexHashToCid(memoHash),
+		memoHash,
+		sizeBytes: bytes.length,
+	};
 }
 
 /**
@@ -46,7 +63,7 @@ export async function checkBulletinAuthorization(
 export async function uploadToBulletin(
 	fileBytes: Uint8Array,
 	signer: PolkadotSigner,
-): Promise<void> {
+): Promise<BulletinBlobRef> {
 	if (fileBytes.length > MAX_FILE_SIZE) {
 		throw new Error(
 			`File too large (${(fileBytes.length / 1024 / 1024).toFixed(1)} MiB). Maximum is 8 MiB.`,
@@ -57,8 +74,9 @@ export async function uploadToBulletin(
 	const tx = api.tx.TransactionStorage.store({
 		data: Binary.fromBytes(fileBytes),
 	});
+	const blobRef = buildBulletinBlobRef(fileBytes);
 
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<BulletinBlobRef>((resolve, reject) => {
 		const timeout = setTimeout(() => {
 			subscription.unsubscribe();
 			reject(new Error("Bulletin Chain upload timed out"));
@@ -69,7 +87,7 @@ export async function uploadToBulletin(
 				if (ev.type === "txBestBlocksState" && ev.found) {
 					clearTimeout(timeout);
 					subscription.unsubscribe();
-					resolve();
+					resolve(blobRef);
 				}
 			},
 			error: (err) => {
@@ -79,4 +97,18 @@ export async function uploadToBulletin(
 			},
 		});
 	});
+}
+
+export async function fetchFromBulletinByHash(
+	memoHash: `0x${string}`,
+): Promise<{ bytes: Uint8Array; cid: string }> {
+	const cid = hexHashToCid(memoHash);
+	const response = await fetch(ipfsUrl(cid));
+	if (!response.ok) {
+		throw new Error(`Bulletin fetch failed with status ${response.status}`);
+	}
+	return {
+		bytes: new Uint8Array(await response.arrayBuffer()),
+		cid,
+	};
 }
