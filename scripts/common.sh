@@ -25,6 +25,7 @@ SUBSTRATE_RPC_HTTP="${SUBSTRATE_RPC_HTTP:-http://127.0.0.1:${STACK_SUBSTRATE_RPC
 SUBSTRATE_RPC_WS="${SUBSTRATE_RPC_WS:-ws://127.0.0.1:${STACK_SUBSTRATE_RPC_PORT}}"
 ETH_RPC_HTTP="${ETH_RPC_HTTP:-http://127.0.0.1:${STACK_ETH_RPC_PORT}}"
 FRONTEND_URL="${FRONTEND_URL:-http://127.0.0.1:${STACK_FRONTEND_PORT}}"
+STACK_ARCHIVE_MODE="${STACK_ARCHIVE_MODE:-0}"
 
 ZOMBIE_DIR="${ZOMBIE_DIR:-}"
 ZOMBIE_LOG="${ZOMBIE_LOG:-}"
@@ -39,6 +40,7 @@ export STACK_PORT_OFFSET
 export STACK_SUBSTRATE_RPC_PORT
 export STACK_ETH_RPC_PORT
 export STACK_FRONTEND_PORT
+export STACK_ARCHIVE_MODE
 export SUBSTRATE_RPC_HTTP
 export SUBSTRATE_RPC_WS
 export ETH_RPC_HTTP
@@ -648,6 +650,11 @@ wait_for_eth_rpc() {
 
 write_zombienet_config() {
     local config_path="$1"
+    local collator_args='["--enable-statement-store"'
+    if [ "$STACK_ARCHIVE_MODE" = "1" ]; then
+        collator_args+=', "--state-pruning", "archive", "--blocks-pruning", "archive"'
+    fi
+    collator_args+=']'
 
     cat >"$config_path" <<EOF
 [settings]
@@ -683,7 +690,7 @@ cumulus_based = true
   p2p_port = $STACK_COLLATOR_P2P_PORT
   prometheus_port = $STACK_COLLATOR_PROMETHEUS_PORT
   command = "polkadot-omni-node"
-  args = ["--enable-statement-store"]
+  args = $collator_args
 EOF
 }
 
@@ -744,6 +751,10 @@ start_local_node_background() {
 
     NODE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/polkadot-stack-node.XXXXXX")"
     NODE_LOG="$NODE_DIR/node.log"
+    local extra_archive_args=()
+    if [ "$STACK_ARCHIVE_MODE" = "1" ]; then
+        extra_archive_args=(--state-pruning archive --blocks-pruning archive)
+    fi
 
     polkadot-omni-node \
         --chain "$CHAIN_SPEC" \
@@ -755,6 +766,7 @@ start_local_node_background() {
         --unsafe-force-node-key-generation \
         --rpc-cors all \
         --rpc-port "$STACK_SUBSTRATE_RPC_PORT" \
+        "${extra_archive_args[@]}" \
         -- >"$NODE_LOG" 2>&1 &
     NODE_PID=$!
 
@@ -764,6 +776,10 @@ start_local_node_background() {
 run_local_node_foreground() {
     require_cmd_semver_exact polkadot-omni-node "$STACK_EXPECTED_OMNI_NODE_SEMVER" "polkadot-omni-node"
     require_port_free "$STACK_SUBSTRATE_RPC_PORT"
+    local extra_archive_args=()
+    if [ "$STACK_ARCHIVE_MODE" = "1" ]; then
+        extra_archive_args=(--state-pruning archive --blocks-pruning archive)
+    fi
 
     polkadot-omni-node \
         --chain "$CHAIN_SPEC" \
@@ -775,6 +791,7 @@ run_local_node_foreground() {
         --unsafe-force-node-key-generation \
         --rpc-cors all \
         --rpc-port "$STACK_SUBSTRATE_RPC_PORT" \
+        "${extra_archive_args[@]}" \
         --
 }
 
