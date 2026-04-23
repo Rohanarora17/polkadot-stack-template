@@ -1,0 +1,15 @@
+{
+	"name": "stealthpay-relayer",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node server.mjs"
+	},
+	"dependencies": {
+		"cors": "^2.8.5",
+		"dotenv": "^17.2.3",
+		"express": "^4.21.2",
+		"snarkjs": "^0.7.5",
+		"viem": "^2.38.6"
+	}
+}
