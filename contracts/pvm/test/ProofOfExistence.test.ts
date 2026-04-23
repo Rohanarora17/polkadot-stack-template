@@ -18,7 +18,10 @@ describe("ProofOfExistence (PVM)", function () {
 
 	it("Should return zero for unclaimed hash", async function () {
 		const { poe } = await loadFixture(deployFixture);
-		const [owner, blockNumber] = await poe.read.getClaim([testHash]);
+		const [owner, blockNumber] = (await poe.read.getClaim([testHash])) as readonly [
+			string,
+			bigint,
+		];
 		expect(owner).to.equal("0x0000000000000000000000000000000000000000");
 		expect(blockNumber).to.equal(0n);
 	});
@@ -26,7 +29,10 @@ describe("ProofOfExistence (PVM)", function () {
 	it("Should create a claim", async function () {
 		const { poe, owner } = await loadFixture(deployFixture);
 		await poe.write.createClaim([testHash]);
-		const [claimOwner, blockNumber] = await poe.read.getClaim([testHash]);
+		const [claimOwner, blockNumber] = (await poe.read.getClaim([testHash])) as readonly [
+			string,
+			bigint,
+		];
 		expect(getAddress(claimOwner)).to.equal(getAddress(owner.account.address));
 		expect(blockNumber).to.not.equal(0n);
 	});
@@ -55,7 +61,7 @@ describe("ProofOfExistence (PVM)", function () {
 		const { poe } = await loadFixture(deployFixture);
 		await poe.write.createClaim([testHash]);
 		await poe.write.revokeClaim([testHash]);
-		const [owner] = await poe.read.getClaim([testHash]);
+		const [owner] = (await poe.read.getClaim([testHash])) as readonly [string, bigint];
 		expect(owner).to.equal("0x0000000000000000000000000000000000000000");
 		expect(await poe.read.getClaimCount()).to.equal(0n);
 	});
