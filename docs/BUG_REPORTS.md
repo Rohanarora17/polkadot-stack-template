@@ -61,7 +61,7 @@ Status:
 - Current workaround:
     - do not use Dot.li as the primary demo surface
     - use the normal browser deployment where external wallet + Privy flows work
-    - keep Dot.li work isolated on `codex/dotli-host-integration`
+    - keep Dot.li work isolated on `dotli-host-integration`
 - Notes:
     - "mapped" means a Substrate account has a corresponding `pallet-revive` H160 identity that can originate PVM contract calls
     - call data `0x6407` is the account-mapping transaction, not the private gift deposit

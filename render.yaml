@@ -20,6 +20,8 @@ services:
         value: "true"
       - key: STEALTHPAY_INDEXER_LOOKBACK_BLOCKS
         value: "30000"
+      - key: STEALTHPAY_INDEXER_MAX_BLOCKS_PER_CYCLE
+        value: "1000"
       - key: STEALTHPAY_INDEXER_DATA_FILE
         value: /var/data/stealthpay-indexer.json
       - key: STEALTHPAY_INDEXER_WS

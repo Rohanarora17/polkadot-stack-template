@@ -56,6 +56,9 @@ const INDEXER_WS =
 	process.env.VITE_WS_URL ||
 	"wss://asset-hub-paseo-rpc.n.dwellir.com";
 const INDEXER_LOOKBACK_BLOCKS = BigInt(process.env.STEALTHPAY_INDEXER_LOOKBACK_BLOCKS || 30_000);
+const INDEXER_MAX_BLOCKS_PER_CYCLE = BigInt(
+	process.env.STEALTHPAY_INDEXER_MAX_BLOCKS_PER_CYCLE || 1_000,
+);
 const INDEXER_POLL_MS = Number(process.env.STEALTHPAY_INDEXER_POLL_MS || 6_000);
 const INDEXER_READ_REFRESH_TIMEOUT_MS = Number(
 	process.env.STEALTHPAY_INDEXER_READ_REFRESH_TIMEOUT_MS || 8_000,
@@ -533,13 +536,17 @@ async function executeIndexerCycle() {
 			indexerState.latestIndexedBlock === null ? null : BigInt(indexerState.latestIndexedBlock);
 		const fromBlock =
 			lastIndexed === null || lastIndexed < lowerBound ? lowerBound : lastIndexed + 1n;
+		const boundedFromBlock =
+			finalizedBlock - fromBlock + 1n > INDEXER_MAX_BLOCKS_PER_CYCLE
+				? finalizedBlock - INDEXER_MAX_BLOCKS_PER_CYCLE + 1n
+				: fromBlock;
 
-		if (fromBlock > finalizedBlock) {
+		if (boundedFromBlock > finalizedBlock) {
 			indexerLastError = null;
 			return;
 		}
 
-		await scanIndexerRange(fromBlock, finalizedBlock);
+		await scanIndexerRange(boundedFromBlock, finalizedBlock);
 		indexerState.latestIndexedBlock = finalizedBlock.toString();
 		indexerLastError = null;
 		saveIndexerState();
