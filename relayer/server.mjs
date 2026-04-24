@@ -94,11 +94,7 @@ const indexerState = loadIndexerState();
 app.use(
 	cors({
 		origin(origin, callback) {
-			if (
-				!origin ||
-				CORS_ALLOWED_ORIGINS.length === 0 ||
-				CORS_ALLOWED_ORIGINS.includes(origin)
-			) {
+			if (isAllowedCorsOrigin(origin)) {
 				callback(null, true);
 				return;
 			}
@@ -107,6 +103,23 @@ app.use(
 	}),
 );
 app.use(express.json({ limit: `${Math.ceil(MAX_BULLETIN_UPLOAD_BYTES * 2.2)}b` }));
+
+function isAllowedCorsOrigin(origin) {
+	if (!origin) return true;
+	if (CORS_ALLOWED_ORIGINS.includes(origin)) return true;
+	try {
+		const { hostname, protocol } = new URL(origin);
+		if (protocol !== "https:" && !hostname.endsWith(".localhost")) return false;
+		return (
+			hostname === "stealthpaygift24.dot.li" ||
+			hostname.endsWith(".app.dot.li") ||
+			hostname === "localhost" ||
+			hostname === "127.0.0.1"
+		);
+	} catch {
+		return false;
+	}
+}
 
 app.get("/health", async (_req, res) => {
 	res.json({ ok: true });
