@@ -1,4 +1,4 @@
-# Polkadot Stack Template
+x# Polkadot Stack Template
 
 A developer starter template demonstrating the full Polkadot technology stack through a **Proof of Existence** system — the same concept implemented as a Substrate pallet, a Solidity EVM contract, and a Solidity PVM contract. Drop a file, claim its hash on-chain, and optionally upload it to IPFS via the Bulletin Chain.
 
@@ -35,8 +35,8 @@ Current StealthPay gaps and risks:
 Demo branch split:
 
 - `master`: browser-demo stable app, external wallet + Privy path, deployed to Vercel
-- `codex/browser-demo-stable`: same stable browser-demo history kept as a review branch
-- `codex/dotli-host-integration`: Dot.li / Triangle host integration experiments and current P-wallet signing investigation
+- `browser-demo-stable`: same stable browser-demo history kept as a review branch
+- `dotli-host-integration`: Dot.li / Triangle host integration experiments and current P-wallet signing investigation
 
 The product shell now exposes StealthPay through:
 
