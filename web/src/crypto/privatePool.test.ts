@@ -89,6 +89,33 @@ describe("private pool helpers", () => {
 		expect(proof.root.startsWith("0x")).toBe(true);
 	});
 
+	it("uses public subtree hints when one older leaf is missing from the event index", async () => {
+		const completeDeposits: PoolDepositRecord[] = Array.from({ length: 7 }, (_, index) => ({
+			blockNumber: BigInt(10 + index),
+			commitment: fieldToHex(BigInt(100 + index)),
+			leafIndex: index,
+			root: fieldToHex(0n),
+		}));
+		const completeProof = await computeMerkleProofForDeposit(
+			completeDeposits,
+			fieldToHex(106n),
+		);
+		const partialDeposits = completeDeposits.filter((deposit) => deposit.leafIndex !== 3);
+
+		const hintedProof = await computeMerkleProofForDeposit(
+			partialDeposits,
+			fieldToHex(106n),
+			{
+				expectedDepositCount: 7,
+				subtreeHints: [{ level: 2, value: fieldToHex(completeProof.pathElements[2]) }],
+			},
+		);
+
+		expect(hintedProof.leafIndex).toBe(6);
+		expect(hintedProof.pathElements).toEqual(completeProof.pathElements);
+		expect(hintedProof.root).toBe(completeProof.root);
+	});
+
 	it("rejects Merkle proof reconstruction when earlier leaf history is missing", async () => {
 		const deposits: PoolDepositRecord[] = [
 			{

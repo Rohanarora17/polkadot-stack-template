@@ -22,12 +22,14 @@ export async function fetchBlockscoutEventLogs(args: {
 	baseUrl: string;
 	eventName: string;
 	fromBlock: bigint;
+	maxPages?: number;
 	toBlock: bigint;
 }) {
 	const logs = await fetchBlockscoutAddressLogs({
 		address: args.address,
 		baseUrl: args.baseUrl,
 		fromBlock: args.fromBlock,
+		maxPages: args.maxPages ?? MAX_BLOCKSCOUT_PAGES,
 		toBlock: args.toBlock,
 	});
 
@@ -38,12 +40,13 @@ async function fetchBlockscoutAddressLogs(args: {
 	address: Address;
 	baseUrl: string;
 	fromBlock: bigint;
+	maxPages: number;
 	toBlock: bigint;
 }) {
 	const logs: Log[] = [];
 	let nextPageParams: BlockscoutLogsResponse["next_page_params"] = null;
 
-	for (let page = 0; page < MAX_BLOCKSCOUT_PAGES; page++) {
+	for (let page = 0; page < args.maxPages; page++) {
 		const url = buildLogsUrl(args.baseUrl, args.address, nextPageParams);
 		const response = await fetch(url);
 		if (!response.ok) {

@@ -40,11 +40,15 @@ export async function scanRuntimeContractEvents<TArgs extends Record<string, unk
 	requestedFromBlock,
 	toBlock,
 	wsUrl,
+	concurrency = 24,
+	stopWhen,
 }: {
 	abi: Abi;
 	contractAddress: Address;
+	concurrency?: number;
 	eventName: string;
 	requestedFromBlock: bigint;
+	stopWhen?: (event: DecodedRuntimeContractEvent<TArgs>) => boolean;
 	toBlock: bigint;
 	wsUrl: string;
 }): Promise<RuntimeContractEventScanResult<TArgs>> {
@@ -55,19 +59,18 @@ export async function scanRuntimeContractEvents<TArgs extends Record<string, unk
 	const eventStorage = dynamicBuilder.buildStorage("System", "Events");
 	const eventStorageKey = eventStorage.keys.enc();
 
-	const decodedDescending: Array<DecodedRuntimeContractEvent<TArgs>> = [];
+	const decodedEvents: Array<DecodedRuntimeContractEvent<TArgs>> = [];
 	let actualFromBlock = requestedFromBlock;
 	let truncatedByPrunedState = false;
+	let nextBlock = toBlock;
+	let stopBelow = requestedFromBlock;
 
-	for (let blockNumber = toBlock; blockNumber >= requestedFromBlock; blockNumber--) {
+	async function scanBlock(blockNumber: bigint) {
 		const blockHash = (await client._request("chain_getBlockHash", [
 			Number(blockNumber),
 		])) as HexString | null;
 		if (!blockHash) {
-			if (blockNumber === 0n) {
-				break;
-			}
-			continue;
+			return;
 		}
 
 		let rawEventsHex: HexString | null = null;
@@ -80,20 +83,18 @@ export async function scanRuntimeContractEvents<TArgs extends Record<string, unk
 			const message = cause instanceof Error ? cause.message : String(cause);
 			if (message.includes("UnknownBlock: State already discarded")) {
 				actualFromBlock = blockNumber + 1n;
+				stopBelow = blockNumber + 1n;
 				truncatedByPrunedState = true;
-				break;
+				return;
 			}
 			throw cause;
 		}
 
 		if (!rawEventsHex || rawEventsHex === "0x") {
-			if (blockNumber === 0n) {
-				break;
-			}
-			continue;
+			return;
 		}
 
-		const decodedEvents = eventStorage.value.dec(hexToBytes(rawEventsHex)) as Array<{
+		const runtimeEvents = eventStorage.value.dec(hexToBytes(rawEventsHex)) as Array<{
 			event: {
 				type: string;
 				value: {
@@ -108,7 +109,7 @@ export async function scanRuntimeContractEvents<TArgs extends Record<string, unk
 			phase: RuntimePhase;
 		}>;
 
-		decodedEvents.forEach((entry, eventIndex) => {
+		runtimeEvents.forEach((entry, eventIndex) => {
 			if (
 				entry.event.type !== "Revive" ||
 				entry.event.value.type !== "ContractEmitted" ||
@@ -132,17 +133,31 @@ export async function scanRuntimeContractEvents<TArgs extends Record<string, unk
 			);
 
 			if (decoded) {
-				decodedDescending.push(decoded);
+				decodedEvents.push(decoded);
+				if (stopWhen?.(decoded)) {
+					stopBelow = blockNumber + 1n;
+				}
 			}
 		});
+	}
 
-		if (blockNumber === 0n) {
-			break;
+	async function worker() {
+		while (nextBlock >= stopBelow) {
+			const blockNumber = nextBlock;
+			nextBlock -= 1n;
+			if (blockNumber < stopBelow) {
+				return;
+			}
+			await scanBlock(blockNumber);
 		}
 	}
 
+	await Promise.all(
+		Array.from({ length: Math.max(1, Math.min(concurrency, 48)) }, () => worker()),
+	);
+
 	return {
-		events: decodedDescending.reverse(),
+		events: decodedEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber)),
 		fromBlock: actualFromBlock,
 		toBlock,
 		truncatedByPrunedState,

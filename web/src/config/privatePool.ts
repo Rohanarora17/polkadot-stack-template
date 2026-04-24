@@ -43,6 +43,13 @@ export const privatePoolAbi = [
 	},
 	{
 		type: "function",
+		name: "filledSubtrees",
+		inputs: [{ name: "", type: "uint256" }],
+		outputs: [{ name: "", type: "bytes32" }],
+		stateMutability: "view",
+	},
+	{
+		type: "function",
 		name: "deposit",
 		inputs: [{ name: "commitment", type: "bytes32" }],
 		outputs: [
@@ -94,6 +101,15 @@ export const privatePoolAbi = [
 		outputs: [{ name: "", type: "bool" }],
 		stateMutability: "view",
 	},
+	{ type: "error", name: "FeeTooHigh", inputs: [] },
+	{ type: "error", name: "InvalidDenomination", inputs: [] },
+	{ type: "error", name: "InvalidFieldElement", inputs: [] },
+	{ type: "error", name: "InvalidProof", inputs: [] },
+	{ type: "error", name: "NullifierAlreadyUsed", inputs: [] },
+	{ type: "error", name: "QuoteExpired", inputs: [] },
+	{ type: "error", name: "TransferFailed", inputs: [] },
+	{ type: "error", name: "TreeFull", inputs: [] },
+	{ type: "error", name: "UnknownRoot", inputs: [] },
 	{
 		type: "event",
 		name: "Deposit",

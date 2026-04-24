@@ -23,7 +23,7 @@ export function getPublicEventIndexerConfig(
 		};
 	}
 
-	if (configuredUrl) {
+	if (configuredUrl && configuredUrl.toLowerCase().includes("blockscout")) {
 		return {
 			baseUrl: normalizeBaseUrl(configuredUrl),
 			kind: "blockscout",

@@ -85,6 +85,11 @@ export type MerkleProof = {
 	root: HexString;
 };
 
+export type MerkleProofHint = {
+	level: number;
+	value: HexString;
+};
+
 let poseidonBuilderPromise: Promise<PoseidonBuilder> | undefined;
 
 export function fieldToHex(value: bigint): HexString {
@@ -267,6 +272,10 @@ export async function computePoolContext(args: {
 export async function computeMerkleProofForDeposit(
 	deposits: PoolDepositRecord[],
 	commitmentHex: HexString,
+	options: {
+		expectedDepositCount?: number | null;
+		subtreeHints?: MerkleProofHint[];
+	} = {},
 ): Promise<MerkleProof> {
 	if (!isBytes32Hex(commitmentHex)) {
 		throw new Error("Private note commitment is malformed.");
@@ -292,43 +301,56 @@ export async function computeMerkleProofForDeposit(
 		throw new Error("The matched pool deposit is outside the supported tree depth.");
 	}
 
-	const knownLeafIndexes = new Set(sorted.map((record) => record.leafIndex));
-	for (let index = 0; index <= matchedRecord.leafIndex; index += 1) {
-		if (!knownLeafIndexes.has(index)) {
-			throw new Error(
-				"Pool deposit history is incomplete for this note. Increase the scan range so the app can reconstruct the full Merkle path.",
-			);
+	const poseidon = await getPoseidonBuilder();
+	const expectedDepositCount =
+		options.expectedDepositCount ??
+		(sorted.length > 0 ? Math.max(...sorted.map((record) => record.leafIndex)) + 1 : null);
+	const subtreeHints = new Map<number, bigint>();
+	for (const hint of options.subtreeHints ?? []) {
+		if (
+			Number.isInteger(hint.level) &&
+			hint.level >= 0 &&
+			hint.level < PRIVATE_POOL_TREE_DEPTH &&
+			isBytes32Hex(hint.value)
+		) {
+			subtreeHints.set(hint.level, hexToField(hint.value));
 		}
 	}
 
-	const poseidon = await getPoseidonBuilder();
-	const leafValues = Array.from({ length: 1 << PRIVATE_POOL_TREE_DEPTH }, () => zeroValues[0]);
-	sorted.forEach((record) => {
-		leafValues[record.leafIndex] = hexToField(record.commitment);
-	});
+	const knownNodes = new Map<string, bigint>();
+	for (const record of sorted) {
+		knownNodes.set(nodeKey(0, record.leafIndex), hexToField(record.commitment));
+	}
 
 	const pathElements: bigint[] = [];
 	const pathIndices: number[] = [];
 	let currentIndex = matchedRecord.leafIndex;
-	let levelNodes = leafValues;
+	let currentValue = hexToField(matchedRecord.commitment);
 
 	for (let level = 0; level < PRIVATE_POOL_TREE_DEPTH; level++) {
 		const isRight = currentIndex % 2 === 1;
 		const siblingIndex = isRight ? currentIndex - 1 : currentIndex + 1;
 		pathIndices.push(isRight ? 1 : 0);
-		pathElements.push(levelNodes[siblingIndex] ?? zeroValues[level]);
-
-		const nextLevel: bigint[] = [];
-		for (let i = 0; i < levelNodes.length; i += 2) {
-			nextLevel.push(
-				poseidon.hash2([
-					levelNodes[i] ?? zeroValues[level],
-					levelNodes[i + 1] ?? zeroValues[level],
-				]),
+		const siblingValue = getKnownSubtreeValue({
+			expectedDepositCount,
+			level,
+			nodeIndex: siblingIndex,
+			poseidon,
+			subtreeHints,
+			nodes: knownNodes,
+		});
+		if (siblingValue === null) {
+			throw new Error(
+				"Pool deposit history is incomplete for this note. Increase the scan range so the app can reconstruct the full Merkle path.",
 			);
 		}
-		levelNodes = nextLevel;
+		pathElements.push(siblingValue);
+
+		currentValue = isRight
+			? poseidon.hash2([siblingValue, currentValue])
+			: poseidon.hash2([currentValue, siblingValue]);
 		currentIndex = Math.floor(currentIndex / 2);
+		knownNodes.set(nodeKey(level + 1, currentIndex), currentValue);
 	}
 
 	return {
@@ -336,8 +358,76 @@ export async function computeMerkleProofForDeposit(
 		leafIndex: matchedRecord.leafIndex,
 		pathElements,
 		pathIndices,
-		root: fieldToHex(levelNodes[0] ?? zeroValues[PRIVATE_POOL_TREE_DEPTH]),
+		root: fieldToHex(currentValue),
 	};
+}
+
+function getKnownSubtreeValue(args: {
+	expectedDepositCount: number | null;
+	level: number;
+	nodeIndex: number;
+	nodes: Map<string, bigint>;
+	poseidon: PoseidonBuilder;
+	subtreeHints: Map<number, bigint>;
+}): bigint | null {
+	const cached = args.nodes.get(nodeKey(args.level, args.nodeIndex));
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const subtreeSize = 1 << args.level;
+	const startLeaf = args.nodeIndex * subtreeSize;
+	if (args.expectedDepositCount !== null && startLeaf >= args.expectedDepositCount) {
+		const zero = zeroValues[args.level];
+		args.nodes.set(nodeKey(args.level, args.nodeIndex), zero);
+		return zero;
+	}
+
+	if (
+		args.expectedDepositCount !== null &&
+		isFilledSubtreeHintForNode(args.expectedDepositCount, args.level, args.nodeIndex)
+	) {
+		const hinted = args.subtreeHints.get(args.level);
+		if (hinted !== undefined) {
+			args.nodes.set(nodeKey(args.level, args.nodeIndex), hinted);
+			return hinted;
+		}
+	}
+
+	if (args.level === 0) {
+		return null;
+	}
+
+	const left = getKnownSubtreeValue({
+		...args,
+		level: args.level - 1,
+		nodeIndex: args.nodeIndex * 2,
+	});
+	const right = getKnownSubtreeValue({
+		...args,
+		level: args.level - 1,
+		nodeIndex: args.nodeIndex * 2 + 1,
+	});
+	if (left !== null && right !== null) {
+		const value = args.poseidon.hash2([left, right]);
+		args.nodes.set(nodeKey(args.level, args.nodeIndex), value);
+		return value;
+	}
+
+	return null;
+}
+
+function nodeKey(level: number, index: number) {
+	return `${level}:${index}`;
+}
+
+function isFilledSubtreeHintForNode(expectedDepositCount: number, level: number, nodeIndex: number) {
+	if (expectedDepositCount <= 0) {
+		return false;
+	}
+	const subtreeSize = 1 << level;
+	const frontierNodeIndex = Math.floor((expectedDepositCount - 1) / subtreeSize);
+	return frontierNodeIndex % 2 === 1 && nodeIndex === frontierNodeIndex - 1;
 }
 
 function isValidPoolDepositRecord(value: PoolDepositRecord) {
