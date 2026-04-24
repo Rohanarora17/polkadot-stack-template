@@ -7,7 +7,7 @@ services:
     repo: https://github.com/Rohanarora17/polkadot-stack-template
     branch: codex/render-relayer-deploy
     autoDeploy: true
-    buildCommand: cd web && npm ci --ignore-scripts && cd ../relayer && npm ci
+    buildCommand: cd web && npm install --ignore-scripts --no-audit --no-fund && cd ../relayer && npm ci
     startCommand: cd relayer && npm start
     healthCheckPath: /health
     envVars:
