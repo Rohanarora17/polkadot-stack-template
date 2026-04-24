@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import type { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -14,12 +14,13 @@ import {
 	type BearerGiftRecoveryPayload,
 } from "../crypto/bearerGift";
 import {
-	computePoolContext,
+	PRIVATE_POOL_TREE_DEPTH,
 	computeMerkleProofForDeposit,
 	decodePrivateDeliveryPayload,
 	exportEncryptedNoteBackup,
 	serializeEncryptedNoteBackup,
 	type MerkleProof,
+	type MerkleProofHint,
 	type PrivateNotePayload,
 } from "../crypto/privatePool";
 import { decryptPrivateNote } from "../crypto/privateNote";
@@ -35,11 +36,13 @@ import { useChainStore } from "../store/chainStore";
 import { generatePrivateWithdrawProof } from "../utils/privateWithdrawProof";
 import { requestRelayerQuote, submitRelayedPrivateWithdraw } from "../utils/privateRelayer";
 import {
+	scanPoolDepositByCommitment,
 	scanPoolDeposits,
 	scanPrivateAnnouncements,
+	scanPrivateAnnouncementsByMemoHash,
 	type PrivateAnnouncementCandidate,
 } from "../utils/privatePoolScan";
-import { resolveReviveAddress } from "../utils/stealthRevive";
+import { isMappedForRevive, resolveReviveAddress } from "../utils/stealthRevive";
 import {
 	createBrowserExtensionTxSession,
 	createDevTxSession,
@@ -51,11 +54,15 @@ import {
 } from "../wallet/stealthRegister";
 import { requireStealthSeed, type ResolvedStealthSeed } from "../utils/stealthSeed";
 import { parseClaimLinkSearch } from "../utils/claimLinks";
+import { saveEmbeddedClaimWallet } from "../utils/embeddedWalletVault";
 import { recordPrivateGiftClaimed } from "../utils/walletActivity";
+import { useEmbeddedWalletProvider } from "../wallet/EmbeddedWalletContext";
+import { readWalletPreference, writeWalletPreference } from "../utils/walletPreference";
+import { isPolkadotHostEnvironment } from "../utils/hostEnvironment";
 
 const CONTRACT_STORAGE_KEY_PREFIX = "stealthpay-private-withdraw-registry";
 const POOL_STORAGE_KEY_PREFIX = "stealthpay-private-withdraw-pool";
-const DEFAULT_SCAN_DEPTH = "5000";
+const DEFAULT_SCAN_DEPTH = "1000";
 const POOL_DEPOSIT_HISTORY_FROM_BLOCK = 0n;
 
 type PrivateWithdrawPageProps = {
@@ -99,7 +106,9 @@ type WithdrawalState = {
 
 type BearerClaimWallet = {
 	address: Address;
-	privateKey: Hex;
+	privateKey?: Hex;
+	provider: "embedded" | "local-vault" | "pwallet-h160";
+	providerName: string;
 };
 
 function scopedStorageKey(prefix: string, ethRpcUrl: string) {
@@ -148,8 +157,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 	const location = useLocation();
 	const ethRpcUrl = useChainStore((s) => s.ethRpcUrl);
 	const wsUrl = useChainStore((s) => s.wsUrl);
+	const embeddedWalletProvider = useEmbeddedWalletProvider();
 
-	const [walletMode, setWalletMode] = useState<RegisterWalletMode>("browser-extension");
+	const [walletMode, setWalletMode] = useState<RegisterWalletMode>(() =>
+		isPolkadotHostEnvironment() ? "pwallet-host" : "browser-extension",
+	);
 	const [devAccountIndex, setDevAccountIndex] = useState(0);
 	const [availableExtensionWallets, setAvailableExtensionWallets] = useState<string[]>([]);
 	const [selectedExtensionWallet, setSelectedExtensionWallet] = useState("");
@@ -166,9 +178,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 	const [error, setError] = useState<string | null>(null);
 	const [claimLinkCopied, setClaimLinkCopied] = useState(false);
 	const [bearerClaimWallet, setBearerClaimWallet] = useState<BearerClaimWallet | null>(null);
+	const [resumeBearerClaimAfterLogin, setResumeBearerClaimAfterLogin] = useState(false);
 	const [useExistingBearerDestination, setUseExistingBearerDestination] = useState(false);
 	const [backupPasswords, setBackupPasswords] = useState<Record<string, string>>({});
 	const [backupReady, setBackupReady] = useState<Record<string, boolean>>({});
+	const [embeddedWalletReady, setEmbeddedWalletReady] = useState<Record<string, boolean>>({});
 	const [withdrawals, setWithdrawals] = useState<Record<string, WithdrawalState>>({});
 	const [claimLinkHint, setClaimLinkHint] = useState<ReturnType<
 		typeof parseClaimLinkSearch
@@ -184,13 +198,30 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 	);
 	const hasClaimLink = Boolean(claimLinkHint);
 	const isBearerClaim = claimLinkHint?.mode === "bearer";
+	const claimLinkIsComplete = !claimLinkHint
+		? false
+		: claimLinkHint.mode === "bearer"
+			? Boolean(
+					claimLinkHint.poolAddress &&
+						claimLinkHint.registryAddress &&
+						claimLinkHint.memoHash &&
+						claimLinkHint.giftKey,
+				)
+			: Boolean(
+					claimLinkHint.poolAddress &&
+						claimLinkHint.registryAddress &&
+						claimLinkHint.recipientOwner,
+				);
+	const claimLinkIsIncomplete = hasClaimLink && !claimLinkIsComplete;
 	const hasExtensionWallets = availableExtensionWallets.length > 0;
 	const needsSupportedWalletBrowser =
 		consumerMode &&
+		!claimLinkIsIncomplete &&
 		!isBearerClaim &&
 		walletMode === "browser-extension" &&
 		!hasExtensionWallets;
-	const advancedClaimHref = hasClaimLink ? `#/withdraw${location.search}` : "#/withdraw";
+	const advancedClaimHref =
+		hasClaimLink && !claimLinkIsIncomplete ? `#/withdraw${location.search}` : "#/withdraw";
 	const claimedCommitment = Object.entries(withdrawals).find(
 		([, value]) => value.transactionHash,
 	)?.[0];
@@ -200,6 +231,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 				null)
 			: null;
 	const claimedWithdrawal = claimedCommitment ? (withdrawals[claimedCommitment] ?? null) : null;
+	const prepareBearerGiftClaimRef = useRef<() => Promise<void>>(async () => undefined);
 
 	useEffect(() => {
 		setContractAddress(
@@ -233,9 +265,14 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 
 	useEffect(() => {
 		const wallets = listBrowserExtensions();
+		const preferred = readWalletPreference();
 		setAvailableExtensionWallets(wallets);
 		setSelectedExtensionWallet((current) =>
-			current && wallets.includes(current) ? current : (wallets[0] ?? ""),
+			current && wallets.includes(current)
+				? current
+				: preferred?.walletName && wallets.includes(preferred.walletName)
+					? preferred.walletName
+					: (wallets[0] ?? ""),
 		);
 	}, []);
 
@@ -254,10 +291,14 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 					return;
 				}
 				setExtensionAccounts(accounts);
+				const preferred = readWalletPreference();
 				setSelectedExtensionAccount((current) =>
 					current && accounts.some((account) => account.address === current)
 						? current
-						: (accounts[0]?.address ?? ""),
+						: preferred?.walletName === selectedExtensionWallet &&
+							  accounts.some((account) => account.address === preferred.accountAddress)
+							? preferred.accountAddress
+							: (accounts[0]?.address ?? ""),
 				);
 			} catch (cause) {
 				console.error(cause);
@@ -272,6 +313,35 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			cancelled = true;
 		};
 	}, [walletMode, selectedExtensionWallet]);
+
+	useEffect(() => {
+		if (walletMode !== "browser-extension" || !selectedExtensionWallet) {
+			return;
+		}
+		const account =
+			extensionAccounts.find((candidate) => candidate.address === selectedExtensionAccount) ??
+			null;
+		writeWalletPreference({ account, walletName: selectedExtensionWallet });
+	}, [extensionAccounts, selectedExtensionAccount, selectedExtensionWallet, walletMode]);
+
+	useEffect(() => {
+		if (
+			!resumeBearerClaimAfterLogin ||
+			!isBearerClaim ||
+			claimLinkIsIncomplete ||
+			!embeddedWalletProvider.address
+		) {
+			return;
+		}
+
+		setResumeBearerClaimAfterLogin(false);
+		void prepareBearerGiftClaimRef.current();
+	}, [
+		claimLinkIsIncomplete,
+		embeddedWalletProvider.address,
+		isBearerClaim,
+		resumeBearerClaimAfterLogin,
+	]);
 
 	function setStoredAddress(storageKey: string, setter: (value: string) => void, value: string) {
 		setter(value);
@@ -310,10 +380,18 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 	}
 
 	async function deriveRecipientKeys() {
+		if (claimLinkIsIncomplete) {
+			setError(
+				"This private gift link is incomplete. Ask the sender to resend the full private gift link or QR.",
+			);
+			return;
+		}
+
 		setError(null);
 		setReadback(null);
 		setWithdrawals({});
 		setBackupReady({});
+		setEmbeddedWalletReady({});
 		setStatus("Loading the recipient stealth seed and deriving the private-withdraw keys...");
 
 		try {
@@ -373,7 +451,16 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 		setReadback(null);
 		setWithdrawals({});
 		setBackupReady({});
-		setStatus("Scanning private announcements and pool deposits...");
+		setEmbeddedWalletReady({});
+		const exactRegisteredGiftMemo =
+			claimLinkHint?.mode === "registered" && claimLinkHint.memoHash
+				? claimLinkHint.memoHash
+				: null;
+		setStatus(
+			exactRegisteredGiftMemo
+				? "Looking up the exact private gift from indexed history..."
+				: "Scanning recent private announcements for this wallet...",
+		);
 
 		try {
 			const publicClient = getPublicClient(ethRpcUrl);
@@ -381,26 +468,56 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			const depth = parseDepth(scanDepthInput);
 			const fromBlock = latestBlock > depth ? latestBlock - depth + 1n : 0n;
 
-			const [announcementScan, depositScan] = await Promise.all([
-				scanPrivateAnnouncements({
-					contractAddress: contractAddress as Address,
-					ethRpcUrl,
-					fromBlock,
-					publicClient,
-					toBlock: latestBlock,
-					wsUrl,
-				}),
-				scanPoolDeposits({
-					ethRpcUrl,
-					fromBlock: POOL_DEPOSIT_HISTORY_FROM_BLOCK,
-					poolAddress: poolAddress as Address,
-					publicClient,
-					toBlock: latestBlock,
-					wsUrl,
-				}),
-			]);
+			const announcementScan = exactRegisteredGiftMemo
+				? await scanPrivateAnnouncementsByMemoHash({
+						contractAddress: contractAddress as Address,
+						ethRpcUrl,
+						memoHash: exactRegisteredGiftMemo,
+						publicClient,
+						toBlock: latestBlock,
+						wsUrl,
+					})
+				: await scanPrivateAnnouncements({
+						contractAddress: contractAddress as Address,
+						ethRpcUrl,
+						fromBlock,
+						publicClient,
+						toBlock: latestBlock,
+						wsUrl,
+					});
 
-			const matches: MatchedPrivateWithdrawal[] = [];
+			if (announcementScan.announcements.length === 0) {
+				setReadback({
+					fromBlock:
+						fromBlock > announcementScan.fromBlock
+							? fromBlock
+							: announcementScan.fromBlock,
+					matches: [],
+					note: announcementScan.note,
+					privateAnnouncementCount: 0,
+					poolDepositCount: 0,
+					toBlock: latestBlock,
+				});
+				setStatus(
+					exactRegisteredGiftMemo
+						? "Opened a claim link, but the exact gift announcement was not found in indexed history."
+						: "Scanned the recent range but found no private matches for this recipient.",
+				);
+				return;
+			}
+
+			setStatus(
+				exactRegisteredGiftMemo
+					? "Gift announcement found. Decrypting the private note..."
+					: `Found ${announcementScan.announcements.length} announcements. Checking which ones belong to this wallet...`,
+			);
+
+			const decryptedMatches: Array<{
+				announcement: PrivateAnnouncementCandidate;
+				bulletinCid: string;
+				decryptedMemo: string | null;
+				note: MatchedPrivateWithdrawal["note"];
+			}> = [];
 			for (const announcement of announcementScan.announcements) {
 				if (
 					claimLinkHint?.transactionHash &&
@@ -436,23 +553,93 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 					continue;
 				}
 
-				const merkleProof = await computeMerkleProofForDeposit(
-					depositScan.deposits,
-					note.commitment,
+				decryptedMatches.push({
+					announcement,
+					bulletinCid: fetched.cid ?? "unknown",
+					decryptedMemo: deliveryPayload.memoText,
+					note,
+				});
+			}
+
+			if (decryptedMatches.length === 0) {
+				setReadback({
+					fromBlock:
+						fromBlock > announcementScan.fromBlock
+							? fromBlock
+							: announcementScan.fromBlock,
+					matches: [],
+					note: announcementScan.note,
+					privateAnnouncementCount: announcementScan.announcements.length,
+					poolDepositCount: 0,
+					toBlock: latestBlock,
+				});
+				setStatus(
+					claimLinkHint?.transactionHash || claimLinkHint?.memoHash
+						? "Opened a claim link, but this wallet could not decrypt the linked private gift. Check that you are using the intended recipient wallet."
+						: "Scanned the recent range but found no private matches for this recipient.",
 				);
+				return;
+			}
+
+			setStatus(
+				exactRegisteredGiftMemo
+					? "Private note decrypted. Reconstructing the pool proof path..."
+					: `Matched ${decryptedMatches.length} gift${decryptedMatches.length === 1 ? "" : "s"}. Reconstructing pool proof path...`,
+			);
+
+			let depositScan = await scanPoolDeposits({
+				ethRpcUrl,
+				fromBlock: POOL_DEPOSIT_HISTORY_FROM_BLOCK,
+				poolAddress: poolAddress as Address,
+				publicClient,
+				toBlock: latestBlock,
+				wsUrl,
+			});
+			const poolProofContext = await readPoolProofContext(publicClient, poolAddress as Address);
+
+			const matches: MatchedPrivateWithdrawal[] = [];
+			for (const decryptedMatch of decryptedMatches) {
+				let merkleProof: Awaited<ReturnType<typeof computeMerkleProofForDeposit>>;
+				try {
+					merkleProof = await computeMerkleProofForDeposit(
+						depositScan.deposits,
+						decryptedMatch.note.commitment,
+						poolProofContext,
+					);
+				} catch (cause) {
+					if (!isMissingPoolDepositError(cause)) {
+						throw cause;
+					}
+					setStatus("Gift decrypted. Refreshing public pool history for this note...");
+					depositScan = await scanPoolDeposits({
+						bypassCache: true,
+						ethRpcUrl,
+						fromBlock: POOL_DEPOSIT_HISTORY_FROM_BLOCK,
+						poolAddress: poolAddress as Address,
+						publicClient,
+						toBlock: latestBlock,
+						wsUrl,
+					});
+					try {
+						merkleProof = await computeMerkleProofForDeposit(
+							depositScan.deposits,
+							decryptedMatch.note.commitment,
+							poolProofContext,
+						);
+					} catch (refreshedCause) {
+						throw enrichMissingPoolDepositError(refreshedCause, depositScan.note);
+					}
+				}
 				const spent = await publicClient.readContract({
 					address: poolAddress,
 					abi: privatePoolAbi,
 					functionName: "nullifierHashes",
-					args: [note.nullifierHash],
+					args: [decryptedMatch.note.nullifierHash],
 				});
 
 				matches.push({
-					announcement,
-					bulletinCid: fetched.cid,
-					decryptedMemo: deliveryPayload.memoText,
+					...decryptedMatch,
 					merkleProof,
-					note,
 					spent,
 				});
 			}
@@ -469,9 +656,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			setStatus(
 				matches.length > 0
 					? `Found ${matches.length} private gift${matches.length === 1 ? "" : "s"} ready to claim.`
-					: claimLinkHint?.transactionHash || claimLinkHint?.memoHash
-						? "Opened a claim link, but this wallet did not find a matching private gift in the current scan window."
-						: "Scanned the recent range but found no private matches for this recipient.",
+					: exactRegisteredGiftMemo && announcementScan.announcements.length === 0
+						? "Opened a claim link, but the exact gift announcement was not found in indexed history."
+						: claimLinkHint?.transactionHash || claimLinkHint?.memoHash
+							? "Opened a claim link, but this wallet could not decrypt the linked private gift. Check that you are using the intended recipient wallet."
+							: "Scanned the recent range but found no private matches for this recipient.",
 			);
 		} catch (cause) {
 			console.error(cause);
@@ -483,6 +672,12 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 	async function prepareBearerGiftClaim() {
 		if (!claimLinkHint || claimLinkHint.mode !== "bearer") {
 			setError("Open a walletless bearer gift link first.");
+			return;
+		}
+		if (claimLinkIsIncomplete) {
+			setError(
+				"This walletless gift link is incomplete. Ask the sender to resend the full private gift link or QR.",
+			);
 			return;
 		}
 		if (!claimLinkHint.giftKey || !claimLinkHint.memoHash) {
@@ -498,20 +693,74 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 		setReadback(null);
 		setWithdrawals({});
 		setBackupReady({});
-		setStatus("Opening the walletless gift and creating a fresh private claim wallet...");
+		setEmbeddedWalletReady({});
+		setStatus("Opening the walletless gift and preparing a private claim wallet...");
 
 		try {
-			const privateKey = generatePrivateKey();
-			const account = privateKeyToAccount(privateKey);
-			const claimWallet = {
-				address: account.address as Address,
-				privateKey,
-			};
+			let claimWallet: BearerClaimWallet;
+			if (!useExistingBearerDestination && isPolkadotHostEnvironment()) {
+				setStatus("Using the connected P-wallet as the Dot.li claim destination...");
+				const hostSession = await createPwalletTxSession();
+				const mapped = await isMappedForRevive({
+					originSs58: hostSession.originSs58,
+					wsUrl,
+				});
+				if (!mapped) {
+					throw new Error(
+						"This P-wallet is not mapped for Revive yet. Map it once from Send Gift or Register, then reopen this gift link and claim.",
+					);
+				}
+				const mappedAddress = await resolveReviveAddress({
+					originSs58: hostSession.originSs58,
+					wsUrl,
+				});
+				if (!isAddress(mappedAddress)) {
+					throw new Error(`Mapped P-wallet destination is not a valid H160: ${mappedAddress}`);
+				}
+				claimWallet = {
+					address: mappedAddress,
+					provider: "pwallet-h160",
+					providerName: "P-wallet mapped H160",
+				};
+			} else if (!useExistingBearerDestination && embeddedWalletProvider.available) {
+				const knownEmbeddedAddress =
+					bearerClaimWallet?.provider === "embedded"
+						? bearerClaimWallet.address
+						: embeddedWalletProvider.address;
+				let providerAddress = knownEmbeddedAddress;
+				if (!providerAddress) {
+					setStatus(
+						"Sign in with email, Google, or passkey to open a recoverable embedded wallet...",
+					);
+					providerAddress = await embeddedWalletProvider.ensureAddress();
+				}
+				if (!providerAddress) {
+					setStatus("Finish sign-in, then continue to claim this walletless gift.");
+					setResumeBearerClaimAfterLogin(true);
+					return;
+				}
+				setStatus("Embedded wallet ready. Opening the private gift envelope...");
+				claimWallet = {
+					address: providerAddress,
+					provider: "embedded",
+					providerName: embeddedWalletProvider.name,
+				};
+			} else {
+				const privateKey = generatePrivateKey();
+				const account = privateKeyToAccount(privateKey);
+				claimWallet = {
+					address: account.address as Address,
+					privateKey,
+					provider: "local-vault",
+					providerName: "Encrypted browser-local vault",
+				};
+			}
 			setBearerClaimWallet(claimWallet);
 			if (!useExistingBearerDestination) {
 				setWithdrawDestination(claimWallet.address);
 			}
 
+			setStatus("Fetching and decrypting the private gift envelope...");
 			const fetched = await fetchFromBulletinByHash(claimLinkHint.memoHash);
 			const decrypted = decryptBearerGiftEnvelope({
 				envelopeBytes: fetched.bytes,
@@ -521,21 +770,74 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			if (note.poolAddress.toLowerCase() !== poolAddress.toLowerCase()) {
 				throw new Error("This gift link points to a different privacy pool.");
 			}
+			if (claimWallet.privateKey) {
+				await saveEmbeddedClaimWallet({
+					address: claimWallet.address,
+					commitment: note.commitment,
+					label: decrypted.payload.memoText || "Walletless private gift",
+					memoHash: claimLinkHint.memoHash,
+					poolAddress: poolAddress as Address,
+					privateKey: claimWallet.privateKey,
+				});
+			}
+			setEmbeddedWalletReady((current) => ({ ...current, [note.commitment]: true }));
 
+			setStatus("Finding this gift in the pool and reconstructing the private proof path...");
 			const publicClient = getPublicClient(ethRpcUrl);
 			const latestBlock = await publicClient.getBlockNumber();
-			const depositScan = await scanPoolDeposits({
-				ethRpcUrl,
-				fromBlock: POOL_DEPOSIT_HISTORY_FROM_BLOCK,
-				poolAddress: poolAddress as Address,
-				publicClient,
-				toBlock: latestBlock,
-				wsUrl,
-			});
-			const merkleProof = await computeMerkleProofForDeposit(
-				depositScan.deposits,
-				note.commitment,
-			);
+			const poolProofContext = await readPoolProofContext(publicClient, poolAddress as Address);
+			let merkleProof: Awaited<ReturnType<typeof computeMerkleProofForDeposit>>;
+			let depositScanNote: string | null = null;
+			let poolDepositCount = poolProofContext.expectedDepositCount ?? 0;
+			let scanFromBlock = POOL_DEPOSIT_HISTORY_FROM_BLOCK;
+			try {
+				const exactDepositScan = await scanPoolDepositByCommitment({
+					commitment: note.commitment,
+					ethRpcUrl,
+					poolAddress: poolAddress as Address,
+					publicClient,
+					toBlock: latestBlock,
+					wsUrl,
+				});
+				depositScanNote = combineScanNotes(depositScanNote, exactDepositScan.note);
+				scanFromBlock =
+					scanFromBlock < exactDepositScan.fromBlock ? scanFromBlock : exactDepositScan.fromBlock;
+				if (!exactDepositScan.deposit) {
+					throw new Error("Matching pool deposit was not found for this private note.");
+				}
+				merkleProof = await computeMerkleProofForDeposit(
+					[exactDepositScan.deposit],
+					note.commitment,
+					poolProofContext,
+				);
+			} catch (cause) {
+				if (!isMissingPoolDepositError(cause)) {
+					throw cause;
+				}
+				setStatus("Exact lookup needs more history. Refreshing public pool history...");
+				const depositScan = await scanPoolDeposits({
+					bypassCache: true,
+					ethRpcUrl,
+					fromBlock: POOL_DEPOSIT_HISTORY_FROM_BLOCK,
+					poolAddress: poolAddress as Address,
+					publicClient,
+					toBlock: latestBlock,
+					wsUrl,
+				});
+				depositScanNote = combineScanNotes(depositScanNote, depositScan.note);
+				poolDepositCount = depositScan.deposits.length;
+				scanFromBlock =
+					scanFromBlock < depositScan.fromBlock ? scanFromBlock : depositScan.fromBlock;
+				try {
+					merkleProof = await computeMerkleProofForDeposit(
+						depositScan.deposits,
+						note.commitment,
+						poolProofContext,
+					);
+				} catch (refreshedCause) {
+					throw enrichMissingPoolDepositError(refreshedCause, depositScan.note);
+				}
+			}
 			const spent = await publicClient.readContract({
 				address: poolAddress,
 				abi: privatePoolAbi,
@@ -563,15 +865,19 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			};
 
 			setReadback({
-				fromBlock: depositScan.fromBlock,
+				fromBlock: scanFromBlock,
 				matches: [match],
-				note: depositScan.note,
-				privateAnnouncementCount: 1,
-				poolDepositCount: depositScan.deposits.length,
+				note: depositScanNote,
+				privateAnnouncementCount: 0,
+				poolDepositCount,
 				toBlock: latestBlock,
 			});
 			setStatus(
-				"Walletless gift opened. Save the private wallet recovery file, then claim to the fresh private wallet.",
+				claimWallet.provider === "embedded"
+					? "Walletless gift opened. A recoverable embedded wallet is ready, and you can claim now."
+					: claimWallet.provider === "pwallet-h160"
+						? "Walletless gift opened. The connected P-wallet mapped H160 is ready, and you can claim now."
+					: "Walletless gift opened. A device-local fallback wallet was saved in this browser, and you can claim now.",
 			);
 		} catch (cause) {
 			console.error(cause);
@@ -579,13 +885,71 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			setStatus(null);
 		}
 	}
+	prepareBearerGiftClaimRef.current = prepareBearerGiftClaim;
 
 	function backupKey(match: MatchedPrivateWithdrawal) {
 		return match.note.commitment;
 	}
 
+	function isMissingPoolDepositError(cause: unknown): cause is Error {
+		return (
+			cause instanceof Error &&
+			cause.message === "Matching pool deposit was not found for this private note."
+		);
+	}
+
+	function enrichMissingPoolDepositError(cause: unknown, scanNote: string | null) {
+		if (isMissingPoolDepositError(cause) && scanNote) {
+			return new Error(`${cause.message} ${scanNote}`);
+		}
+		return cause;
+	}
+
+	function combineScanNotes(...notes: Array<string | null>) {
+		const uniqueNotes = Array.from(new Set(notes.filter((note): note is string => Boolean(note))));
+		return uniqueNotes.length > 0 ? uniqueNotes.join(" ") : null;
+	}
+
+	async function readPoolProofContext(
+		publicClient: ReturnType<typeof getPublicClient>,
+		address: Address,
+	): Promise<{ expectedDepositCount: number | null; subtreeHints: MerkleProofHint[] }> {
+		try {
+			const [nextIndex, ...filledSubtrees] = await Promise.all([
+				publicClient.readContract({
+					address,
+					abi: privatePoolAbi,
+					functionName: "nextIndex",
+				}),
+				...Array.from({ length: PRIVATE_POOL_TREE_DEPTH }, (_, level) =>
+					publicClient.readContract({
+						address,
+						abi: privatePoolAbi,
+						functionName: "filledSubtrees",
+						args: [BigInt(level)],
+					}),
+				),
+			]);
+			const expectedDepositCount = Number(nextIndex);
+			return {
+				expectedDepositCount: Number.isSafeInteger(expectedDepositCount)
+					? expectedDepositCount
+					: null,
+				subtreeHints: filledSubtrees.map((value, level) => ({
+					level,
+					value,
+				})),
+			};
+		} catch {
+			return {
+				expectedDepositCount: null,
+				subtreeHints: [],
+			};
+		}
+	}
+
 	function requiresRecoveryBeforeClaim() {
-		return isBearerClaim;
+		return false;
 	}
 
 	async function saveRecoveryFile(
@@ -599,6 +963,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			if (isBearerClaim) {
 				if (!bearerClaimWallet) {
 					throw new Error("Create the fresh claim wallet before saving recovery.");
+				}
+				if (!bearerClaimWallet.privateKey) {
+					throw new Error(
+						"This wallet is recovered by the embedded wallet provider; no local private key export is available from StealthPay.",
+					);
 				}
 				const recoveryDestination = isAddress(withdrawDestination)
 					? withdrawDestination
@@ -652,9 +1021,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 			!options?.backupAlreadySatisfied &&
 			!backupReady[key]
 		) {
-			setError(
-				"Save the generated wallet recovery file before claiming this walletless gift.",
-			);
+			setError("Prepare the walletless claim wallet before claiming this gift.");
 			return;
 		}
 
@@ -710,13 +1077,14 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 				setWithdrawals((current) => ({
 					...current,
 					[key]: {
-						error: null,
+						error: cause instanceof Error ? cause.message : String(cause),
 						quoteExpiry: quote.expiry,
 						quoteFee: quote.fee,
 						relayer: quote.relayerAddress,
-						status: "Browser proving failed. Falling back to the relayer-assisted proving path...",
+						status: "Browser proving failed. The relayer cannot receive private witness data, so the claim was not submitted.",
 					},
 				}));
+				return;
 			}
 
 			const result = await submitRelayedPrivateWithdraw({
@@ -724,34 +1092,9 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 				expiry: quote.expiry,
 				fee: quote.fee,
 				nullifierHash: match.note.nullifierHash,
-				nullableProofInput: proofCoordinates
-					? null
-					: {
-							context: (
-								await computePoolContext({
-									chainId: match.note.chainId,
-									expiry: quote.expiry,
-									fee: quote.fee,
-									poolAddress: match.note.poolAddress,
-									recipient: effectiveWithdrawDestination,
-									relayer: quote.relayerAddress,
-								})
-							).toString(),
-							nullifier: BigInt(match.note.nullifier).toString(),
-							nullifierHash: BigInt(match.note.nullifierHash).toString(),
-							pathElements: match.merkleProof.pathElements.map((value) =>
-								value.toString(),
-							),
-							pathIndices: match.merkleProof.pathIndices.map((value) =>
-								value.toString(),
-							),
-							root: BigInt(match.merkleProof.root).toString(),
-							scope: BigInt(match.note.scope).toString(),
-							secret: BigInt(match.note.secret).toString(),
-						},
-				pA: proofCoordinates?.pA,
-				pB: proofCoordinates?.pB,
-				pC: proofCoordinates?.pC,
+				pA: proofCoordinates.pA,
+				pB: proofCoordinates.pB,
+				pC: proofCoordinates.pC,
 				poolAddress: poolAddress as Address,
 				quoteId: quote.quoteId,
 				recipient: effectiveWithdrawDestination,
@@ -834,68 +1177,82 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 							<span className="gift-chip">
 								{readback?.matches.length
 									? "Gift found"
+									: claimLinkIsIncomplete
+										? "Gift link incomplete"
 									: hasClaimLink
 										? "Private gift link"
 										: "Gift opener"}
 							</span>
-							<h1 className="page-title">Open Your Private Gift</h1>
+							<h1 className="page-title">Open your private gift</h1>
 							<p className="text-sm text-text-secondary">
-								Open a private gift link, connect the recipient wallet, and let the
-								app guide the gift from discovery to private claim.
+								Open a private gift link or QR, then let StealthPay guide the gift
+								from discovery to private claim.
 							</p>
 						</div>
-						<div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-4 min-w-[220px]">
-							<div className="text-xs uppercase tracking-[0.18em] text-text-muted">
+						<div className="dark-emerald-surface min-w-[220px] rounded-2xl border border-emerald-900/15 bg-emerald-900 px-4 py-4 shadow-[0_18px_36px_-28px_rgba(24,55,45,0.9)]">
+							<div className="surface-muted text-xs uppercase tracking-[0.18em]">
 								Status
 							</div>
-							<div className="mt-2 text-lg font-semibold text-text-primary">
+							<div className="mt-2 text-lg font-semibold">
 								{withdrawals &&
 								Object.values(withdrawals).some((item) => item.transactionHash)
 									? "Claimed privately"
 									: readback?.matches.length
 										? "Ready to claim"
+										: claimLinkIsIncomplete
+											? "Gift link incomplete"
 										: snapshot
 											? "Wallet connected"
 											: hasClaimLink
 												? "Link opened"
 												: "Awaiting gift link"}
 							</div>
-							<p className="mt-2 text-sm text-text-secondary">
+							<p className="surface-muted mt-2 text-sm">
 								{withdrawals &&
 								Object.values(withdrawals).some((item) => item.transactionHash)
 									? "The gift has already been claimed through the relayer."
+									: claimLinkIsIncomplete
+										? "The QR or link is missing required claim data."
 									: isBearerClaim
-										? "The happy path is open link, create a private wallet, save that wallet, and claim."
-										: "The happy path is open link, connect wallet, and claim."}
+										? "The happy path is scan, sign in, and claim."
+										: "The happy path is open, connect your StealthPay account, and claim."}
 							</p>
 						</div>
 					</div>
 
 					{hasClaimLink ? (
-						<div className="rounded-xl border border-polka-500/20 bg-polka-500/10 px-4 py-3 text-sm text-polka-100">
-							{isBearerClaim ? (
+						<div className="rounded-xl border border-coral-500/20 bg-coral-50 px-4 py-3 text-sm text-coral-800">
+							{claimLinkIsIncomplete ? (
 								<>
-									You opened a walletless gift link. Click{" "}
-									<strong>Create Private Wallet and Find Gift</strong> to claim to
-									a fresh local wallet.
+									This private gift link or QR is incomplete. Ask the sender to
+									resend the full StealthPay gift link from the gift success
+									screen.
+								</>
+							) : isBearerClaim ? (
+								<>
+									You opened a walletless gift link or QR. Sign in to your
+									StealthPay account to claim into a recoverable wallet. If no
+									provider is configured, StealthPay keeps the device-local vault
+									as an advanced fallback.
 								</>
 							) : (
 								<>
-									You opened a claim link. Connect the recipient wallet and click{" "}
-									<strong>Open Gift</strong>. The app will search for the linked
-									gift automatically.
+									You opened a private gift link or QR. Connect the recipient
+									wallet and click <strong>Open Gift</strong>. The app will search
+									for the linked gift automatically.
 								</>
 							)}
 						</div>
 					) : (
-						<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-text-secondary">
+						<div className="paper-surface px-4 py-4 text-sm text-text-secondary">
 							<div className="font-medium text-text-primary">
 								No gift link detected.
 							</div>
 							<p className="mt-1">
-								Open the private gift link you received to start the guided claim
-								flow. If you need the technical recovery screen instead, use{" "}
-								<a href={advancedClaimHref} className="text-polka-300 underline">
+								Open the private gift link or scan the QR you received to start the
+								guided claim flow. If you need the technical recovery screen
+								instead, use{" "}
+								<a href={advancedClaimHref} className="text-emerald-700 underline">
 									advanced claim tools
 								</a>
 								.
@@ -909,11 +1266,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 								1. Open
 							</div>
 							<div className="mt-2 text-sm font-medium text-text-primary">
-								Open the private gift link
+								Open link or QR
 							</div>
 							<p className="mt-2 text-sm text-text-secondary">
-								The link preloads the claim context so you do not have to configure
-								the protocol manually.
+								The gift preloads claim context so you do not have to configure the
+								protocol manually.
 							</p>
 						</div>
 						<div className="gift-step">
@@ -921,13 +1278,17 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 								2. Connect
 							</div>
 							<div className="mt-2 text-sm font-medium text-text-primary">
-								{isBearerClaim
-									? "Create a fresh claim wallet"
+								{claimLinkIsIncomplete
+									? "Request a complete gift link"
+									: isBearerClaim
+									? "Sign in to StealthPay"
 									: "Connect the recipient wallet"}
 							</div>
 							<p className="mt-2 text-sm text-text-secondary">
-								{isBearerClaim
-									? "The app generates a new local wallet so the payout does not land directly in an existing public wallet."
+								{claimLinkIsIncomplete
+									? "The sender should resend the private link or QR from the gift success screen."
+									: isBearerClaim
+									? "StealthPay opens a recoverable H160 wallet with email, Google, or passkey."
 									: "The app derives the hidden private wallet identity behind the recipient account and searches for the gift."}
 							</p>
 						</div>
@@ -936,13 +1297,13 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 								3. Claim
 							</div>
 							<div className="mt-2 text-sm font-medium text-text-primary">
-								{isBearerClaim
-									? "Save wallet and claim privately"
-									: "Claim privately"}
+								{claimLinkIsIncomplete ? "Open a valid gift" : "Claim privately"}
 							</div>
 							<p className="mt-2 text-sm text-text-secondary">
-								{isBearerClaim
-									? "Once found, the app saves the generated wallet recovery file and claims through the relayer."
+								{claimLinkIsIncomplete
+									? "Once a complete link is opened, StealthPay can continue with the normal private claim flow."
+									: isBearerClaim
+									? "Once found, the app claims through the relayer to your StealthPay wallet."
 									: "Once found, the app claims through the relayer without exposing a direct sender-to-recipient payment trail."}
 							</p>
 						</div>
@@ -960,7 +1321,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 									</div>
 									<p className="mt-2 text-sm text-text-secondary max-w-3xl">
 										{isBearerClaim
-											? "The public chain now shows a pool payout rather than a direct sender-to-recipient payment. Keep the wallet recovery file somewhere safe so you can access the generated claim wallet later."
+											? "The public chain now shows a pool payout rather than a direct sender-to-recipient payment. In Dot.li the payout can go to the connected P-wallet's mapped H160; outside Dot.li it can go to the embedded wallet provider or a fallback destination."
 											: "The public chain now shows a pool payout rather than a direct sender-to-recipient payment."}
 									</p>
 								</div>
@@ -992,43 +1353,75 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 
 			<div className="card space-y-4">
 				<h2 className="section-title">
-					{isBearerClaim
-						? "Create Private Claim Wallet"
+					{claimLinkIsIncomplete
+						? "Gift link incomplete"
+						: isBearerClaim
+						? "Sign in to claim"
 						: consumerMode
 							? "Connect Recipient Wallet"
 							: "Private Wallet"}
 				</h2>
 				<p className="text-sm text-text-secondary">
-					{isBearerClaim
-						? "This is a walletless bearer gift. The app will create a fresh local wallet, save an encrypted recovery file, and claim through the relayer."
+					{claimLinkIsIncomplete
+						? "StealthPay can see that a gift link was opened, but required route data is missing or malformed. The safest next step is to request a fresh link or QR from the sender."
+						: isBearerClaim
+						? "This is a walletless bearer gift. Sign in and StealthPay claims it to your recoverable wallet."
 						: consumerMode
 							? "Use the wallet that should receive this gift. The app will load the hidden private wallet identity behind it and search for the matching claim."
 							: "Unlock the private wallet identity that receives and decrypts incoming private gifts."}
 				</p>
 
-				{consumerMode && isBearerClaim ? (
-					<div className="rounded-xl border border-accent-green/20 bg-accent-green/10 px-4 py-4 space-y-3">
-						<div className="text-sm font-semibold text-accent-green">
-							Wallet not required before claim
+				{claimLinkIsIncomplete ? (
+					<div className="paper-surface space-y-3 px-4 py-4">
+						<div className="text-sm font-semibold text-text-primary">
+							Do not continue from this URL
 						</div>
 						<p className="text-sm text-text-secondary">
-							This link is the private claim capability until redeemed. Keep it
-							private. By default, StealthPay claims to a fresh generated wallet so
-							the destination is not your existing public wallet.
+							A valid private gift link must include pool, registry, and either
+							registered-recipient data or bearer gift key data. This route is missing
+							enough context that claiming would be unsafe and unreliable.
+						</p>
+						<div className="flex flex-wrap gap-3">
+							<a href="#/gift" className="btn-secondary">
+								Open Gift Page
+							</a>
+							<a href={advancedClaimHref} className="btn-secondary">
+								Advanced Recovery Tools
+							</a>
+						</div>
+					</div>
+				) : consumerMode && isBearerClaim ? (
+					<div className="soft-success space-y-3 py-4">
+						<div className="text-sm font-semibold">
+							{isPolkadotHostEnvironment()
+								? "Dot.li claim uses P-wallet"
+								: "No wallet setup required"}
+						</div>
+						<p className="text-sm text-text-secondary">
+							{isPolkadotHostEnvironment()
+								? "This link is the private claim capability until redeemed. Inside Dot.li, StealthPay claims to your connected P-wallet's mapped H160 address so the flow does not depend on Privy or browser extensions."
+								: "This link is the private claim capability until redeemed. Keep it private. By default, StealthPay claims to a recoverable H160 wallet so the destination is not your existing public wallet."}
 						</p>
 						{bearerClaimWallet ? (
-							<div className="rounded-xl border border-white/10 bg-black/10 p-4">
+							<div className="paper-surface">
 								<div className="text-xs uppercase tracking-[0.18em] text-text-muted">
-									Fresh claim wallet
+									StealthPay wallet
 								</div>
 								<div className="mt-2 break-all font-mono text-sm text-text-primary">
 									{bearerClaimWallet.address}
 								</div>
+								<p className="mt-2 text-xs text-text-muted">
+									Provider: {bearerClaimWallet.providerName}
+								</p>
+								<p className="mt-2 text-xs text-text-muted">
+									Backup and device-transfer controls live in Wallet after the
+									claim. The gift claim itself does not require a file download.
+								</p>
 							</div>
 						) : null}
 					</div>
 				) : consumerMode ? (
-					<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 space-y-3">
+					<div className="paper-surface space-y-3 px-4 py-4">
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-sm font-medium text-text-primary">
@@ -1045,7 +1438,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 								</span>
 							) : null}
 						</div>
-						<details className="rounded-xl border border-white/10 bg-black/10 p-4">
+						<details className="paper-surface">
 							<summary className="cursor-pointer list-none text-sm font-semibold text-text-secondary">
 								Use a different wallet type or recovery method
 							</summary>
@@ -1089,9 +1482,9 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 				)}
 
 				{needsSupportedWalletBrowser ? (
-					<div className="rounded-xl border border-accent-yellow/25 bg-accent-yellow/10 px-4 py-4 space-y-3">
+					<div className="soft-warning space-y-3">
 						<div>
-							<div className="text-sm font-semibold text-accent-yellow">
+							<div className="text-sm font-semibold">
 								This browser cannot access your wallet extension
 							</div>
 							<p className="mt-2 text-sm text-text-secondary">
@@ -1123,7 +1516,8 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 					</div>
 				) : null}
 
-				{!isBearerClaim &&
+				{!claimLinkIsIncomplete &&
+					!isBearerClaim &&
 					walletMode === "browser-extension" &&
 					(hasExtensionWallets ? (
 						<div className="grid gap-4 lg:grid-cols-2">
@@ -1166,7 +1560,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 						</div>
 					) : null)}
 
-				{!isBearerClaim && walletMode === "dev-account" && (
+				{!claimLinkIsIncomplete && !isBearerClaim && walletMode === "dev-account" && (
 					<div className="space-y-2">
 						<label className="label">Dev Signer</label>
 						<select
@@ -1183,8 +1577,8 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 					</div>
 				)}
 
-				{consumerMode && isBearerClaim ? (
-					<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 space-y-3">
+				{claimLinkIsIncomplete ? null : consumerMode && isBearerClaim ? (
+					<div className="paper-surface space-y-3 px-4 py-4">
 						<div>
 							<div className="text-sm font-medium text-text-primary">
 								Claim destination
@@ -1192,11 +1586,11 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 							<p className="mt-1 text-sm text-text-secondary">
 								{withdrawDestination
 									? `The gift will currently be claimed to ${withdrawDestination}.`
-									: "The app will generate a fresh local wallet before claiming."}
+									: "The app will open your StealthPay wallet before claiming. If no provider is configured, it can use a device-local fallback wallet."}
 							</p>
 						</div>
 						<details
-							className="rounded-xl border border-accent-yellow/20 bg-accent-yellow/10 p-4"
+							className="soft-warning"
 							open={useExistingBearerDestination}
 							onToggle={(event) =>
 								setUseExistingBearerDestination(event.currentTarget.open)
@@ -1222,7 +1616,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 						</details>
 					</div>
 				) : consumerMode ? (
-					<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 space-y-3">
+					<div className="paper-surface space-y-3 px-4 py-4">
 						<div>
 							<div className="text-sm font-medium text-text-primary">
 								Claim destination
@@ -1233,7 +1627,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 									: "By default, the gift will be claimed to the connected wallet after it is unlocked."}
 							</p>
 						</div>
-						<details className="rounded-xl border border-white/10 bg-black/10 p-4">
+						<details className="paper-surface">
 							<summary className="cursor-pointer list-none text-sm font-semibold text-text-secondary">
 								Claim to a different wallet
 							</summary>
@@ -1269,40 +1663,42 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 				)}
 
 				{claimLinkHint?.recipientOwner ? (
-					<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-text-secondary">
+					<div className="paper-surface px-4 py-3 text-sm text-text-secondary">
 						Claim link recipient hint:{" "}
 						<span className="font-mono">{claimLinkHint.recipientOwner}</span>
 					</div>
 				) : null}
 
-				<div className="flex flex-wrap gap-3">
-					<button
-						type="button"
-						className="btn-primary"
-						onClick={isBearerClaim ? prepareBearerGiftClaim : deriveRecipientKeys}
-						disabled={needsSupportedWalletBrowser}
-					>
-						{isBearerClaim
-							? bearerClaimWallet
-								? "Find Gift Again"
-								: "Create Private Wallet and Find Gift"
-							: claimLinkHint
-								? "Open Gift"
-								: "Unlock Private Wallet"}
-					</button>
-					{snapshot && !isBearerClaim && (!consumerMode || hasClaimLink) ? (
+				{claimLinkIsIncomplete ? null : (
+					<div className="flex flex-wrap gap-3">
 						<button
 							type="button"
-							className="btn-secondary"
-							onClick={() => scanPrivateWithdrawals()}
+							className="btn-primary"
+							onClick={isBearerClaim ? prepareBearerGiftClaim : deriveRecipientKeys}
+							disabled={needsSupportedWalletBrowser}
 						>
-							{claimLinkHint ? "Search Again" : "Find My Gifts"}
+							{isBearerClaim
+								? bearerClaimWallet
+									? "Find Gift Again"
+									: "Sign in and open gift"
+								: claimLinkHint
+									? "Open Gift"
+									: "Unlock Private Wallet"}
 						</button>
-					) : null}
-				</div>
+						{snapshot && !isBearerClaim && (!consumerMode || hasClaimLink) ? (
+							<button
+								type="button"
+								className="btn-secondary"
+								onClick={() => scanPrivateWithdrawals()}
+							>
+								{claimLinkHint ? "Search Again" : "Find My Gifts"}
+							</button>
+						) : null}
+					</div>
+				)}
 
 				{!consumerMode || hasClaimLink ? (
-					<details className="rounded-xl border border-white/10 bg-white/5 p-4">
+					<details className="paper-surface">
 						<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 							{consumerMode
 								? "Recovery and troubleshooting"
@@ -1426,12 +1822,10 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 							/>
 						</div>
 						{readback.note ? (
-							<div className="rounded-xl border border-accent-yellow/25 bg-accent-yellow/10 px-4 py-3 text-sm text-accent-yellow">
-								{readback.note}
-							</div>
+							<div className="soft-warning px-4 py-3">{readback.note}</div>
 						) : null}
 						{!consumerMode || hasClaimLink ? (
-							<details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+							<details className="paper-surface">
 								<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 									Advanced scan details
 								</summary>
@@ -1492,41 +1886,25 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 									/>
 								</div>
 
-								{requiresRecoveryBeforeClaim() ? (
-									<div className="rounded-xl border border-white/8 bg-black/10 p-4 space-y-3">
+								{isBearerClaim ? (
+									<div className="soft-success space-y-3 p-4">
 										<p className="text-sm text-text-secondary">
-											This walletless gift creates a fresh local wallet for
-											the payout. Save its encrypted recovery file before
-											claiming, or you may lose access to the claimed funds if
-											this browser state is lost.
+											{bearerClaimWallet?.provider === "embedded"
+												? "The payout wallet is managed by the embedded wallet provider. Claim now; recovery is handled by that provider."
+												: bearerClaimWallet?.provider === "pwallet-h160"
+													? "The payout goes to the connected P-wallet's mapped H160 address. This avoids Privy and browser-extension dependencies inside Dot.li."
+													: "The payout wallet is stored in this browser's encrypted local fallback vault. Claim now; backup is a Wallet-page setting, not a blocking step."}
 										</p>
-										<div className="flex flex-col gap-3 md:flex-row">
-											<input
-												className="input-field flex-1"
-												type="password"
-												value={backupPasswords[key] ?? ""}
-												onChange={(event) =>
-													setBackupPasswords((current) => ({
-														...current,
-														[key]: event.target.value,
-													}))
-												}
-												placeholder="Recovery password (min 8 characters)"
-											/>
-											<button
-												type="button"
-												className="btn-secondary"
-												onClick={() => void saveRecoveryFile(match)}
-											>
-												Save Wallet Recovery
-											</button>
-										</div>
 										<p className="text-xs text-text-muted">
-											Wallet recovery saved: {backupReady[key] ? "yes" : "no"}
+											Wallet status:{" "}
+											{embeddedWalletReady[key] ? "ready" : "not ready"}
 										</p>
+										<Link to="/wallet" className="btn-secondary inline-flex">
+											Open Wallet Backup
+										</Link>
 									</div>
 								) : (
-									<details className="rounded-xl border border-white/8 bg-black/10 p-4">
+									<details className="paper-surface">
 										<summary className="cursor-pointer text-sm font-semibold text-text-primary">
 											Optional recovery export
 										</summary>
@@ -1576,27 +1954,25 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 											? backupReady[key]
 												? "Claim to Fresh Wallet"
 												: "Save Wallet Recovery and Claim"
-											: consumerMode
-												? "Claim Gift Privately"
-												: "Claim Privately"}
+											: isBearerClaim
+												? "Claim to Private Wallet"
+												: consumerMode
+													? "Claim Gift Privately"
+													: "Claim Privately"}
 									</button>
 								</div>
 
 								{withdrawalState?.status ? (
-									<div className="rounded-xl border border-accent-blue/25 bg-accent-blue/10 px-4 py-3 text-sm text-accent-blue">
-										{withdrawalState.status}
-									</div>
+									<div className="soft-info">{withdrawalState.status}</div>
 								) : null}
 								{withdrawalState?.error ? (
-									<div className="rounded-xl border border-accent-red/25 bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-										{withdrawalState.error}
-									</div>
+									<div className="soft-danger">{withdrawalState.error}</div>
 								) : null}
 								{withdrawalState?.transactionHash ? (
 									<div className="space-y-3">
 										{consumerMode ? (
-											<div className="rounded-xl border border-accent-green/20 bg-accent-green/10 px-4 py-4">
-												<div className="text-sm font-medium text-accent-green">
+											<div className="soft-success px-4 py-4">
+												<div className="text-sm font-medium">
 													Gift claimed privately
 												</div>
 												<p className="mt-2 text-sm text-text-secondary">
@@ -1617,7 +1993,7 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 											/>
 										</div>
 										{!consumerMode || hasClaimLink ? (
-											<details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+											<details className="paper-surface">
 												<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 													Advanced claim details
 												</summary>
@@ -1664,8 +2040,12 @@ export default function PrivateWithdrawPage({ consumerMode = false }: PrivateWit
 														value={match.merkleProof.leafIndex.toString()}
 													/>
 													<InfoItem
-														label="Announcement Tx"
-														value={match.announcement.transactionHash}
+														label="Announcement Reference"
+														value={
+															match.announcement.transactionHash === "0x"
+																? "Announcement reference not indexed yet"
+																: match.announcement.transactionHash
+														}
 													/>
 													<InfoItem
 														label="Announcement Nonce"

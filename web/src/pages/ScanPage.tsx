@@ -34,9 +34,11 @@ import {
 	type TransactionWalletSession,
 } from "../wallet/stealthRegister";
 import { requireStealthSeed, type ResolvedStealthSeed } from "../utils/stealthSeed";
+import { readWalletPreference, writeWalletPreference } from "../utils/walletPreference";
+import { isPolkadotHostEnvironment } from "../utils/hostEnvironment";
 
 const SCAN_STORAGE_KEY_PREFIX = "stealthpay-scan-address";
-const DEFAULT_SCAN_DEPTH = "5000";
+const DEFAULT_SCAN_DEPTH = "1000";
 
 type ScanSnapshot = {
 	keys: MetaAddressKeys;
@@ -105,7 +107,9 @@ const announcementEvent = stealthPayAbi[8];
 export default function ScanPage() {
 	const ethRpcUrl = useChainStore((s) => s.ethRpcUrl);
 	const wsUrl = useChainStore((s) => s.wsUrl);
-	const [walletMode, setWalletMode] = useState<RegisterWalletMode>("browser-extension");
+	const [walletMode, setWalletMode] = useState<RegisterWalletMode>(() =>
+		isPolkadotHostEnvironment() ? "pwallet-host" : "browser-extension",
+	);
 	const [devAccountIndex, setDevAccountIndex] = useState(0);
 	const [availableExtensionWallets, setAvailableExtensionWallets] = useState<string[]>([]);
 	const [selectedExtensionWallet, setSelectedExtensionWallet] = useState("");
@@ -131,9 +135,14 @@ export default function ScanPage() {
 
 	useEffect(() => {
 		const wallets = listBrowserExtensions();
+		const preferred = readWalletPreference();
 		setAvailableExtensionWallets(wallets);
 		setSelectedExtensionWallet((current) =>
-			current && wallets.includes(current) ? current : (wallets[0] ?? ""),
+			current && wallets.includes(current)
+				? current
+				: preferred?.walletName && wallets.includes(preferred.walletName)
+					? preferred.walletName
+					: (wallets[0] ?? ""),
 		);
 	}, []);
 
@@ -153,10 +162,14 @@ export default function ScanPage() {
 					return;
 				}
 				setExtensionAccounts(accounts);
+				const preferred = readWalletPreference();
 				setSelectedExtensionAccount((current) =>
 					current && accounts.some((account) => account.address === current)
 						? current
-						: (accounts[0]?.address ?? ""),
+						: preferred?.walletName === selectedExtensionWallet &&
+							  accounts.some((account) => account.address === preferred.accountAddress)
+							? preferred.accountAddress
+							: (accounts[0]?.address ?? ""),
 				);
 			} catch (cause) {
 				console.error(cause);
@@ -174,6 +187,16 @@ export default function ScanPage() {
 			cancelled = true;
 		};
 	}, [walletMode, selectedExtensionWallet]);
+
+	useEffect(() => {
+		if (walletMode !== "browser-extension" || !selectedExtensionWallet) {
+			return;
+		}
+		const account =
+			extensionAccounts.find((candidate) => candidate.address === selectedExtensionAccount) ??
+			null;
+		writeWalletPreference({ account, walletName: selectedExtensionWallet });
+	}, [extensionAccounts, selectedExtensionAccount, selectedExtensionWallet, walletMode]);
 
 	function saveContractAddress(value: string) {
 		setContractAddress(value);
