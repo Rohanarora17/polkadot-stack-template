@@ -6,6 +6,18 @@ Demo sentence:
 
 > StealthPay lets someone send a private gift into a Polkadot privacy pool, share it as a link or QR, and let the recipient claim through a relayer without a direct public sender-to-recipient trail.
 
+Current demo link:
+
+```text
+https://web-rouge-one-36.vercel.app
+```
+
+Use the Vercel browser demo for the live walkthrough. The Dot.li / Triangle version is
+preserved on `codex/dotli-host-integration`, but the current P-wallet signing flow can
+stall on the required `Revive.map_account()` setup transaction for unmapped accounts.
+Explain that as an honest platform-integration issue, not as a failure of the privacy
+flow itself.
+
 ## 1. Product Story
 
 ```mermaid
@@ -450,7 +462,7 @@ Talk track:
 
 - The demo is a gift product.
 - The core is a privacy protocol.
-- The stack is Polkadot-native: PVM for contracts, Bulletin for encrypted delivery, Dot.li for distribution.
+- The stack direction is Polkadot-native: PVM for contracts, Bulletin for encrypted delivery, and Dot.li for final distribution once the P-wallet host signing path is stable.
 - The wedge is simple: private value transfer that feels like opening a gift.
 
 ## 14. Technical Explainer For Judges

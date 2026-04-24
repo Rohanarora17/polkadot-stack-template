@@ -25,11 +25,18 @@ Current StealthPay state:
 
 Current StealthPay gaps and risks:
 
-- Dot.li hosting is actively being hardened; the app must be deployed as a self-contained archive because the product host does not reliably execute an external-only bootstrap
+- the working public demo is the normal browser deployment at `https://web-rouge-one-36.vercel.app`
+- Dot.li hosting is isolated on the `codex/dotli-host-integration` branch because the P-wallet host transaction flow currently stalls on `Revive.map_account()` for unmapped accounts
 - the current frontend still has some direct chain / ETH RPC reads, so Dot.li may show a direct-chain-access warning until those reads are moved behind the host API or relayer indexer
-- `Revive.map_account()` is now skipped when the sender is already mapped, but genuinely unmapped P-wallet accounts still need an explicit onboarding transaction before smart-contract sends
+- `Revive.map_account()` works conceptually and is required for P-wallet accounts to call PVM contracts, but the Dot.li hosted signing path is not reliable enough for the main demo
 - the long-term clean contract-write path should follow the Triangle User Agent demo pattern with `@polkadot-api/sdk-ink` dry-run + `send().signSubmitAndWatch(...)`; the current implementation still manually builds `Revive.call(...)`
 - hidden stealth-to-pool shield-hop fallback is not active; the current judge-facing privacy story is sender-to-pool deposit plus relayed private withdrawal
+
+Demo branch split:
+
+- `master`: browser-demo stable app, external wallet + Privy path, deployed to Vercel
+- `codex/browser-demo-stable`: same stable browser-demo history kept as a review branch
+- `codex/dotli-host-integration`: Dot.li / Triangle host integration experiments and current P-wallet signing investigation
 
 The product shell now exposes StealthPay through:
 
@@ -213,6 +220,11 @@ cd contracts/pvm && npx hardhat test
 - [docs/TOOLS.md](docs/TOOLS.md) - All Polkadot stack components used in this template
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment guide (GitHub Pages, DotNS, contracts, runtime)
 - [docs/INSTALL.md](docs/INSTALL.md) - Detailed setup instructions
+- [docs/DEMO_DIAGRAMS.md](docs/DEMO_DIAGRAMS.md) - StealthPay demo diagrams, trust boundaries, and talk track
+- [docs/BUG_REPORTS.md](docs/BUG_REPORTS.md) - StealthPay stack bugs and integration surprises discovered during the build
+- [docs/STEALTHPAY_JOURNEY.md](docs/STEALTHPAY_JOURNEY.md) - Build retrospective and current demo status
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Current StealthPay architecture notes and remaining gaps
+- [docs/CRYPTO.md](docs/CRYPTO.md) - StealthPay crypto working spec for the implemented flows
 
 ## Using Only What You Need
 

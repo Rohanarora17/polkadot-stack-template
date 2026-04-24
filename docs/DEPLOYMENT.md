@@ -77,6 +77,56 @@ cd web && npm install && npm run build
 
 Upload `web/dist/` to Vercel, Netlify, Cloudflare Pages, S3, or any static file server.
 
+### Current StealthPay browser demo
+
+The demo-ready browser deployment is:
+
+```text
+https://web-rouge-one-36.vercel.app
+```
+
+This is the path to use for the current public demo because it supports the browser-extension
+sender flow and the Privy embedded-wallet claim flow without the Dot.li product-host signing
+constraints.
+
+The build was deployed from `master` / `codex/browser-demo-stable` with the repo root as
+the working directory:
+
+```bash
+set -a
+source web/.env.local
+set +a
+
+npx -y vercel@latest deploy web -y --force \
+  -b VITE_WS_URL="$VITE_WS_URL" \
+  -b VITE_ETH_RPC_URL="$VITE_ETH_RPC_URL" \
+  -b VITE_RELAYER_URL="https://stealthpay-relayer.onrender.com" \
+  -b VITE_STEALTHPAY_INDEXER_URL="https://stealthpay-relayer.onrender.com" \
+  -b VITE_ZK_ASSET_BASE_URL="https://stealthpay-relayer.onrender.com/zk/private-withdraw/" \
+  -b VITE_PRIVY_APP_ID="$VITE_PRIVY_APP_ID"
+```
+
+### Dot.li status
+
+The Dot.li experiment remains useful, but it is not the main demo route right now.
+
+Current Dot.li state:
+
+- live domain: `https://stealthpaygift24.dot.li`
+- isolated branch: `codex/dotli-host-integration`
+- current blocker: P-wallet host transaction signing can stall on `Revive.map_account()`
+- symptom: signing modal shows call data `0x6407` and remains on `Signing...`
+- interpretation: `0x6407` is the required `pallet-revive` account mapping call, not the private gift deposit itself
+
+Keep future Dot.li work on the Dot.li branch until the contract write path follows the
+Triangle User Agent demo pattern end to end:
+
+- request host permissions at the right UX step
+- use the host account provider
+- use the Paseo Hub descriptor for Asset Hub
+- dry-run contract calls through the host-compatible SDK path
+- submit with `send().signSubmitAndWatch(...)` or the equivalent host-approved transaction watcher
+
 ## Smart Contract Deployment
 
 ### Local dev node
