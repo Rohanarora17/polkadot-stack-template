@@ -1,0 +1,1 @@
+function n(t){if(!t)return"Transaction failed";const e=t;if(e.type==="Module"&&e.value){const a=e.value;return`${a.type}.${a.value?.type??""}`.replace(/:?\s*$/,"")}return JSON.stringify(t)}export{n as f};

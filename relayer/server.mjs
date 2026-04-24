@@ -137,6 +137,18 @@ app.use(
 	}),
 );
 
+app.use(
+	"/app-assets",
+	express.static(path.resolve(ROOT_DIR, "relayer/public/app-assets"), {
+		immutable: true,
+		maxAge: "1y",
+		setHeaders(res) {
+			res.setHeader("Access-Control-Allow-Origin", "*");
+			res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+		},
+	}),
+);
+
 app.get("/index/status", async (_req, res) => {
 	const finalizedBlock = await getIndexerFinalizedBlock().catch(() => null);
 	res.json({
