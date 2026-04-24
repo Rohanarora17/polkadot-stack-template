@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: stealthpay-relayer
+    runtime: node
+    plan: free
+    region: oregon
+    repo: https://github.com/Rohanarora17/polkadot-stack-template
+    branch: codex/render-relayer-deploy
+    autoDeploy: true
+    buildCommand: cd relayer && npm ci
+    startCommand: cd relayer && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RELAYER_PRIVATE_KEY
+        sync: false
+      - key: BULLETIN_SIGNER_MNEMONIC
+        sync: false
+      - key: BULLETIN_SIGNER_PATH
+        value: ""
+      - key: BULLETIN_WS
+        value: wss://paseo-bulletin-rpc.polkadot.io
+      - key: BULLETIN_MAX_UPLOAD_BYTES
+        value: "8388608"
+      - key: BULLETIN_UPLOAD_RATE_WINDOW_MS
+        value: "60000"
+      - key: BULLETIN_UPLOAD_RATE_MAX
+        value: "30"
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://stealthpaygift24.dot.li
+      - key: ETH_RPC_HTTP
+        value: https://services.polkadothub-rpc.com/testnet
+      - key: RELAYER_QUOTE_TTL_SECONDS
+        value: "600"
+      - key: RELAYER_QUOTE_GAS_UNITS
+        value: "450000"
+      - key: RELAYER_PREMIUM_WEI
+        value: "25000000000000"
+      - key: RELAYER_BUFFER_BPS
+        value: "1500"
+      - key: STEALTHPAY_INDEXER_ENABLED
+        value: "true"
+      - key: STEALTHPAY_INDEXER_WS
+        value: wss://asset-hub-paseo-rpc.n.dwellir.com
+      - key: STEALTHPAY_INDEXER_LOOKBACK_BLOCKS
+        value: "20000"
+      - key: STEALTHPAY_INDEXER_POLL_MS
+        value: "6000"
+      - key: STEALTHPAY_INDEXER_DATA_FILE
+        value: /tmp/stealthpay-indexer.json
