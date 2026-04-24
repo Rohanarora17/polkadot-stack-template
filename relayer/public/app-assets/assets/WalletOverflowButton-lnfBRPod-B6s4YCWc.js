@@ -1,0 +1,1 @@
+import{j as s}from"./index-DRyq2Hq5.js";import{a5 as e,a4 as i,a6 as t}from"./EmbeddedWalletProvider-CamoBLTb.js";import{W as a}from"./wallet-BJxcdXj7.js";const m=({onClick:o,text:r})=>s.jsxs(e,{onClick:o,children:[s.jsx(i,{children:s.jsx(a,{})}),s.jsx(t,{children:r})]});export{m as l};
