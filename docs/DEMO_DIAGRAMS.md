@@ -13,7 +13,7 @@ https://web-rouge-one-36.vercel.app
 ```
 
 Use the Vercel browser demo for the live walkthrough. The Dot.li / Triangle version is
-preserved on `codex/dotli-host-integration`, but the current P-wallet signing flow can
+preserved on `dotli-host-integration`, but the current P-wallet signing flow can
 stall on the required `Revive.map_account()` setup transaction for unmapped accounts.
 Explain that as an honest platform-integration issue, not as a failure of the privacy
 flow itself.
@@ -742,3 +742,338 @@ Correct one-liner:
 Use this if you need a 60-second technical answer:
 
 > A registered recipient publishes a StealthPay meta-address, which is a pair of secp256k1 public keys derived from a dedicated stealth seed. It is not a funded wallet and not a Substrate soft or hard child address. The sender uses it only to encrypt a fresh private pool note. For every gift, the sender creates random note secrets, commits them with Poseidon, and deposits exactly 1 UNIT into the PVM privacy pool. The encrypted note goes to Bulletin, and the link or QR routes the recipient to the claim flow. When claiming, the browser proves with Groth16 that it knows an unspent note in the Merkle tree, without revealing which deposit it is spending. The relayer only submits the proof and pays gas; it never gets the note secret or gift key. Publicly, the explorer sees sender to pool and pool to claim wallet, but not sender directly to recipient.
+
+## 15. Explorer Walkthrough: Proving There Is No Direct Trail
+
+Use this section when the demo reaches the "prove it on-chain" part.
+
+### What To Open
+
+Open the pool contract and the two transactions:
+
+```text
+Pool contract:
+0xaa27B728009493585Ea78D2eCD809f5d09f1580A
+
+Deposit transaction or block:
+sender -> pool
+
+Claim transaction:
+relayer -> pool -> claim wallet
+```
+
+If the deposit does not appear as a normal EVM-style transfer row, search by the block or inspect contract events. Deposits are submitted through Substrate `pallet-revive`, so explorers may show them under extrinsics or contract events instead of as a plain value-transfer list item.
+
+### What The Explorer Should Show
+
+```mermaid
+flowchart TB
+    subgraph depositTx["Deposit transaction"]
+        sender["Sender wallet\nvisible"] --> poolDeposit["Privacy pool contract\nreceives 1 UNIT"]
+        poolDeposit --> commitment["Deposit event\ncommitment + leaf index + root"]
+    end
+
+    subgraph claimTx["Claim transaction"]
+        relayer["Relayer wallet\nvisible"] --> poolWithdraw["Privacy pool contract\nwithdraw(...)"]
+        poolWithdraw --> recipient["Recipient / Privy wallet\nreceives payout"]
+        poolWithdraw --> nullifier["Withdrawal event\nnullifier hash"]
+    end
+
+    commitment -. "hidden by ZK" .-> nullifier
+    sender -. "no public direct transfer" .-> recipient
+
+    classDef visible fill:#fff7e8,stroke:#d9c49d,color:#161914
+    classDef hidden fill:#103f35,stroke:#103f35,color:#ffffff
+    classDef relayerNode fill:#ffe7dd,stroke:#d67b65,color:#401910
+
+    class sender,poolDeposit,commitment,poolWithdraw,recipient,nullifier visible
+    class relayer relayerNode
+```
+
+Talk track:
+
+- "Here is the sender funding the pool."
+- "Here is the relayer submitting a withdrawal from the pool."
+- "Here is the recipient receiving from the pool."
+- "There is no explorer row that says sender paid recipient."
+- "The ZK proof proves the claimant owns some unspent pool note, but hides which deposit leaf."
+
+### What Each Public Value Means
+
+| Explorer value | Meaning | Does it reveal sender-to-recipient link? |
+|---|---|---|
+| Sender address on deposit | Who funded the pool note | No recipient shown |
+| Pool address | StealthPayPoolV1 holding fixed 1 UNIT notes | Shared by all gifts |
+| Commitment | Public Merkle tree leaf for a private note | Does not reveal note secret or recipient |
+| Leaf index | Position of the commitment in the pool tree | Needed for proof path, not recipient identity |
+| Merkle root | Tree root after deposits | Public state checkpoint |
+| Relayer address on claim | Who submitted the withdrawal tx | Not the original sender |
+| Recipient address on claim | Wallet paid by the pool | Sender is not shown |
+| Nullifier hash | Marks note as spent | Prevents double-spend without revealing deposit leaf |
+
+## 16. Privacy FAQ
+
+### Are We Hiding The Depositor Wallet?
+
+No. The depositor wallet is public on the deposit transaction.
+
+Correct privacy statement:
+
+```text
+Visible: sender deposited into the pool.
+Visible: recipient later received from the pool.
+Hidden: which deposit funded which withdrawal.
+```
+
+StealthPay is payment-graph privacy, not invisibility of all activity.
+
+### What Does "Commitment Only" Mean?
+
+The sender creates a private note:
+
+```text
+nullifier = random field element
+secret    = random field element
+commitment = Poseidon(scope, nullifier, secret)
+```
+
+Only `commitment` goes into the pool as a public leaf. The nullifier and secret stay inside the encrypted note delivered to the recipient.
+
+So the chain sees:
+
+```text
+someone deposited 1 UNIT with commitment 0x...
+```
+
+The chain does not see:
+
+```text
+recipient
+memo
+nullifier
+secret
+which wallet can claim it
+```
+
+### What Is A Nullifier?
+
+The nullifier is the anti-double-spend secret for a note.
+
+During claim, the browser reveals:
+
+```text
+nullifierHash = Poseidon(scope, nullifier)
+```
+
+The pool stores used nullifier hashes. If someone tries to claim the same note again, the same `nullifierHash` appears and the contract rejects it.
+
+The important point:
+
+```text
+commitment proves money entered the pool
+nullifierHash proves a note has now been spent
+ZK hides which commitment produced that nullifierHash
+```
+
+### How Is The Merkle Tree Used?
+
+Every pool deposit becomes one Merkle leaf:
+
+```text
+leaf 0 = commitment A
+leaf 1 = commitment B
+leaf 2 = commitment C
+...
+leaf N = your commitment
+```
+
+The pool stores roots for the tree. To claim, the browser reconstructs the tree from public `Deposit` events sorted by `leafIndex`.
+
+For the user's leaf, the browser calculates the sibling path:
+
+```text
+your commitment
+sibling at level 0
+sibling at level 1
+sibling at level 2
+...
+Merkle root
+```
+
+That path becomes part of the private witness for the ZK proof.
+
+### Why Do We Need ZK?
+
+Without ZK, the claimant would have to reveal:
+
+```text
+I am spending leaf N.
+```
+
+That would link the withdrawal to the deposit.
+
+With ZK, the browser proves:
+
+```text
+I know nullifier and secret.
+Poseidon(scope, nullifier, secret) is inside this Merkle root.
+Poseidon(scope, nullifier) equals this public nullifier hash.
+The withdrawal is bound to this recipient, relayer, fee, expiry, pool, and chain.
+```
+
+But it does not reveal:
+
+```text
+which leaf
+note secret
+raw nullifier
+private memo
+bearer gift key
+```
+
+### Who Generates The Proof?
+
+The recipient's browser generates the Groth16 proof locally.
+
+For walletless gifts:
+
+```text
+gift link key decrypts note
+Privy opens the claim wallet
+browser reconstructs Merkle path
+browser generates Groth16 proof
+relayer receives proof coordinates only
+```
+
+For registered-recipient gifts:
+
+```text
+recipient wallet unlocks stealth seed
+browser decrypts matching note
+browser reconstructs Merkle path
+browser generates Groth16 proof
+relayer receives proof coordinates only
+```
+
+### Who Verifies The Proof?
+
+The pool contract verifies it on-chain through the Groth16 verifier contract.
+
+```mermaid
+sequenceDiagram
+    participant Browser as Recipient Browser
+    participant Relayer as Relayer
+    participant Pool as Pool Contract
+    participant Verifier as Groth16 Verifier
+    participant Recipient as Claim Wallet
+
+    Browser->>Browser: Build witness and proof
+    Browser->>Relayer: Send pA, pB, pC and public inputs
+    Relayer->>Pool: withdraw(...)
+    Pool->>Verifier: verifyProof(...)
+    Verifier-->>Pool: valid / invalid
+    Pool->>Pool: mark nullifierHash spent
+    Pool->>Recipient: pay 1 UNIT minus fee
+```
+
+### What Does The Relayer Do?
+
+The relayer is a gas and submission service.
+
+It does:
+
+- quote a fee and expiry
+- submit `withdraw(...)`
+- pay transaction gas
+- receive its fee if the proof verifies
+
+It does not get:
+
+- note secret
+- raw nullifier
+- bearer gift key
+- stealth seed
+- private memo
+
+The relayer cannot redirect the gift because recipient, relayer, fee, expiry, pool, and chain context are bound into the proof/public inputs.
+
+### Why Can't The Recipient Submit The Proof Directly?
+
+They can in principle, but it is worse UX and weaker privacy hygiene:
+
+- recipient needs gas before claiming
+- recipient wallet becomes the transaction sender
+- funding that wallet for gas can create another public link
+
+With a relayer:
+
+- recipient can claim with zero pre-funded gas
+- transaction sender is the relayer
+- the pool pays the recipient if the proof is valid
+
+### What Is A Stealth Meta-Address?
+
+A StealthPay meta-address is a reusable public private-inbox key for registered recipients.
+
+It contains public keys, not funds:
+
+```text
+spending public key
+viewing public key
+```
+
+It is derived from a dedicated StealthPay seed controlled by the recipient. It is not a Substrate soft child address, not a hard child address, and not the parent wallet itself.
+
+Purpose:
+
+```text
+sender can encrypt a private note to a recipient without asking for a fresh address each time
+```
+
+### Can A Meta-Address Be Linked To A User?
+
+If it is registered on-chain, yes.
+
+The registry publicly maps:
+
+```text
+owner wallet -> meta-address
+```
+
+That means a registered wallet publicly opts into having a StealthPay inbox.
+
+What stays hidden is not the existence of the inbox. What stays hidden is:
+
+```text
+which deposits were intended for that inbox
+which claims came from notes encrypted to that inbox
+```
+
+The meta-address is used for encrypted delivery, not as the on-chain payout target.
+
+### If People Can See I Claimed From The Pool, What Is Private?
+
+If you claim to a known public wallet, observers can see:
+
+```text
+pool -> your wallet
+amount: 1 UNIT
+nullifierHash: 0x...
+```
+
+They do not know:
+
+```text
+who sent it
+which deposit funded it
+what the private memo said
+whether it was registered mode or bearer mode
+```
+
+For stronger recipient privacy in the walletless path, StealthPay defaults to a fresh Privy embedded H160 claim wallet. Then the explorer sees:
+
+```text
+pool -> fresh claim wallet
+```
+
+not your existing public wallet, unless you later move funds in a way that links them.

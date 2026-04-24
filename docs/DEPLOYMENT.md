@@ -89,7 +89,7 @@ This is the path to use for the current public demo because it supports the brow
 sender flow and the Privy embedded-wallet claim flow without the Dot.li product-host signing
 constraints.
 
-The build was deployed from `master` / `codex/browser-demo-stable` with the repo root as
+The build was deployed from `master` / `browser-demo-stable` with the repo root as
 the working directory:
 
 ```bash
@@ -106,6 +106,38 @@ npx -y vercel@latest deploy web -y --force \
   -b VITE_PRIVY_APP_ID="$VITE_PRIVY_APP_ID"
 ```
 
+### Hosted relayer and indexer
+
+The hosted relayer should run as a long-lived Node service, not as a serverless function. It handles:
+
+- `/quote` and `/submit` for private withdrawals
+- `/bulletin/upload` for encrypted payload storage sponsorship
+- `/index/*` for public event lookup by commitment, memo hash, and nullifier hash
+- `/zk/*` for proof assets
+- `/warmup` for uptime pings and bounded index catch-up
+
+Render configuration is captured in [`render.yaml`](/Users/rohan/polkadot-stack-template/render.yaml). Use a persistent disk for:
+
+```text
+STEALTHPAY_INDEXER_DATA_FILE=/var/data/stealthpay-indexer.json
+```
+
+Without a persistent disk, the service can still recover by rescanning the recent lookback window, but every cold restart starts behind.
+
+Recommended hosted env:
+
+```bash
+RELAYER_PRIVATE_KEY=0x...
+BULLETIN_SIGNER_MNEMONIC="..."
+CORS_ALLOWED_ORIGINS=https://web-rouge-one-36.vercel.app,http://127.0.0.1:5173
+STEALTHPAY_INDEXER_ENABLED=true
+STEALTHPAY_INDEXER_LOOKBACK_BLOCKS=30000
+STEALTHPAY_INDEXER_DATA_FILE=/var/data/stealthpay-indexer.json
+STEALTHPAY_INDEXER_WS=wss://asset-hub-paseo-rpc.n.dwellir.com
+```
+
+The keep-warm workflow at `.github/workflows/keep-relayer-warm.yml` calls `/warmup` every 10 minutes. This is mainly for demo reliability on free or sleepy hosting plans. If the hosting plan does not sleep, it is still harmless because `/warmup` only triggers a bounded index refresh.
+
 ### Dot.li status
 
 The Dot.li experiment remains useful, but it is not the main demo route right now.
@@ -113,7 +145,7 @@ The Dot.li experiment remains useful, but it is not the main demo route right no
 Current Dot.li state:
 
 - live domain: `https://stealthpaygift24.dot.li`
-- isolated branch: `codex/dotli-host-integration`
+- isolated branch: `dotli-host-integration`
 - current blocker: P-wallet host transaction signing can stall on `Revive.map_account()`
 - symptom: signing modal shows call data `0x6407` and remains on `Signing...`
 - interpretation: `0x6407` is the required `pallet-revive` account mapping call, not the private gift deposit itself

@@ -1,180 +1,252 @@
-# Polkadot Stack Template
+# StealthPay
 
-A developer starter template demonstrating the full Polkadot technology stack through a **Proof of Existence** system — the same concept implemented as a Substrate pallet, a Solidity EVM contract, and a Solidity PVM contract. Drop a file, claim its hash on-chain, and optionally upload it to IPFS via the Bulletin Chain.
+Private gifts, claimed like magic.
 
-Students do not need to use every part of this repo. The runtime, pallet, contracts, frontend, CLI, Bulletin integration, Spektr integration, and deployment workflows are intentionally separated so teams can keep only the slices they want.
+StealthPay is a Polkadot-native private gift protocol. A sender deposits a fixed-size gift into a privacy pool, shares a private link or QR, and the recipient claims through a relayer without a direct public sender-to-recipient payment trail.
 
-## StealthPay Status
+The product turns private value transfer into a consumer gift flow:
 
-This repo now also contains a working StealthPay product slice alongside the original Proof of Existence template:
+- **Send Gift**: create a 1 UNIT private gift, add an optional memo, and share it as a link or QR.
+- **Walletless Claim**: recipients can claim into a Privy embedded H160 wallet with email, Google, or passkey.
+- **Registered Private Wallet**: repeat recipients can register a StealthPay meta-address so senders can target them by wallet or DotNS.
+- **Private Withdrawal**: the recipient's browser generates a Groth16 proof; the relayer submits proof coordinates only.
+- **Explorer Story**: the chain shows sender to pool and pool to claim wallet, not sender directly to recipient.
 
-- `Register`: derive a stealth meta-address from a dedicated seed and register it on the PVM contract
-- `Private Send`: look up the recipient meta-address, derive a private delivery secret, encrypt the pool note plus optional text memo, upload it to Bulletin Chain, and call `announcePrivateDeposit`
-- `Private Withdraw`: scan direct sender-to-pool announcements, decrypt the delivered pool note, generate a Groth16 proof, and withdraw through a relayer to a fresh destination
-- `Public Recovery`: keep the older stealth-address recovery flow available as an advanced escape hatch for debugging and non-private fund recovery
+Demo app:
 
-Current StealthPay state:
-
-- the consumer product shell is now gift-first: `Home`, `Wallet`, `Send Gift`, `Claim`, and `Advanced`
-- `Send Gift` supports registered-recipient gifts and walletless bearer-link gifts
-- gift sharing includes both a private link and a QR claim card
-- walletless claims use Privy as the primary embedded H160 claim wallet provider
-- encrypted Bulletin payload upload can be sponsored by the public relayer so normal users do not need to pre-authorize Bulletin storage
-- the hosted relayer also exposes public-only indexing endpoints for exact deposit, announcement, and withdrawal lookup
-- the Paseo sender path now uses Substrate `Revive.call(...)` with the measured value scale for the fixed `1 UNIT` pool
-
-Current StealthPay gaps and risks:
-
-- the working public demo is the normal browser deployment at `https://web-rouge-one-36.vercel.app`
-- Dot.li hosting is isolated on the `codex/dotli-host-integration` branch because the P-wallet host transaction flow currently stalls on `Revive.map_account()` for unmapped accounts
-- the current frontend still has some direct chain / ETH RPC reads, so Dot.li may show a direct-chain-access warning until those reads are moved behind the host API or relayer indexer
-- `Revive.map_account()` works conceptually and is required for P-wallet accounts to call PVM contracts, but the Dot.li hosted signing path is not reliable enough for the main demo
-- the long-term clean contract-write path should follow the Triangle User Agent demo pattern with `@polkadot-api/sdk-ink` dry-run + `send().signSubmitAndWatch(...)`; the current implementation still manually builds `Revive.call(...)`
-- hidden stealth-to-pool shield-hop fallback is not active; the current judge-facing privacy story is sender-to-pool deposit plus relayed private withdrawal
-
-Demo branch split:
-
-- `master`: browser-demo stable app, external wallet + Privy path, deployed to Vercel
-- `codex/browser-demo-stable`: same stable browser-demo history kept as a review branch
-- `codex/dotli-host-integration`: Dot.li / Triangle host integration experiments and current P-wallet signing investigation
-
-The product shell now exposes StealthPay through:
-
-- `Wallet`
-- `Send Gift`
-- `Claim`
-- `Advanced`
-
-The older technical pages still exist underneath, but the top-level navigation is now aligned to the private-wallet direction rather than the raw protocol steps.
-
-The current UX hardening pass also simplified the main working pages:
-
-- `Send Gift` now hides contract addresses, transport choices, and raw claim internals behind advanced sections
-- `Send Gift` now also has a gift-creation hero, simple three-step framing, recommended sender defaults, and a more narrative “gift created” state
-- `Send Gift` now supports two privacy-preserving gift modes:
-    - registered-recipient gifts keep the current meta-address targeting model
-    - walletless bearer gifts create a sensitive claim link for recipients who do not have a wallet yet
-- registered-recipient gifts now accept normal recipient identifiers:
-    - EVM/H160 wallet addresses
-    - Substrate extension accounts, resolved through `ReviveApi.address`
-    - DotNS names such as `alice.dot`, `alice.paseo.li`, or `alice`
-- if a recipient identifier resolves but that wallet has not registered a StealthPay private inbox, the send flow now routes the sender toward a walletless bearer gift link instead of ending in a technical error
-- `Claim` now hides scan/proof details by default; registered-recipient gifts can be claimed directly, while walletless bearer gifts claim to an embedded H160 wallet when configured
-- `Send Gift` now also produces a shareable gift link that lands on `#/gift` before continuing into the wallet-connected `#/claim` flow with pool, registry, and transaction context preloaded
-- when a registered-recipient claim link is opened, `Claim` now uses a more guided path: unlock wallet, auto-search the linked gift, then claim privately through the relayer
-- walletless bearer gifts use an embedded wallet provider when configured, with the browser-local encrypted vault kept as a fallback rather than the main path
-- the route split is now explicit:
-    - `#/claim` is the consumer gift-opening flow
-    - `#/withdraw` remains the advanced technical claim/recovery surface
-- on the consumer route, the happy path now defaults to the browser-extension wallet, keeps destination override behind disclosure, and moves recovery seed import deeper into recovery/troubleshooting settings
-- the consumer route now also has a more gift-like presentation: a dedicated opening hero, a simple three-step narrative, and clearer private-claim success framing
-- the sender/recipient handoff is now more product-like too:
-    - `Send Gift` presents the claim link as a branded share card instead of just a raw URL
-    - the shared link now lands on a dedicated `#/gift` handoff page before the wallet-connected `#/claim` flow
-    - `Claim` shows a clearer “gift claimed privately” completion state after successful withdrawal
-- the current distribution polish also now includes:
-    - native browser share support where available
-    - adaptive wallet-environment guidance on the `#/gift` page: if the browser cannot see an extension wallet, the primary action becomes copy/reopen instead of pushing the user into a dead-end claim
-    - earlier unsupported-browser handling on `#/claim`, including a clearer reopen/copy/recovery branch instead of empty wallet selectors
-
-## What's Inside
-
-- **Polkadot SDK Blockchain** ([`blockchain/`](blockchain/)) — A Cumulus-based parachain compatible with `polkadot-omni-node`
-    - **Substrate Pallet** ([`blockchain/pallets/template/`](blockchain/pallets/template/)) — FRAME pallet for creating and revoking Proof of Existence claims on-chain
-    - **Parachain Runtime** ([`blockchain/runtime/`](blockchain/runtime/)) — Runtime wiring the pallet with smart contract support via `pallet-revive`
-- **Smart Contracts** ([`contracts/`](contracts/)) — The same PoE example as Solidity, compiled to both EVM bytecode (solc) and PVM/RISC-V bytecode (resolc)
-- **Frontend** ([`web/`](web/)) — React + TypeScript app using PAPI for pallet interactions and viem for contract calls
-- **CLI** ([`cli/`](cli/)) — Rust CLI for chain queries, pallet operations, and contract calls via subxt and alloy
-- **Dev Scripts** ([`scripts/`](scripts/)) — One-command scripts to build, start, and test the full stack locally
-
-## Quick Start
-
-### Docker (no Rust required)
-
-```bash
-# Start the parachain node + Ethereum RPC adapter (first build compiles the runtime ~10-20 min)
-docker compose up -d
-
-# Deploy contracts and start the frontend on the host
-(cd contracts/evm && npm install && npm run deploy:local)
-(cd contracts/pvm && npm install && npm run deploy:local)
-(cd web && npm install && npm run dev)
-# Frontend: http://127.0.0.1:5173
+```text
+https://web-rouge-one-36.vercel.app
 ```
 
-Only Node.js is needed on the host. The Docker build compiles the Rust runtime and generates the chain spec automatically. See [`contracts/README.md`](contracts/README.md) and [`web/README.md`](web/README.md) for the component-specific follow-up steps.
+## Product Overview
 
-### Prerequisites (native)
+```mermaid
+flowchart LR
+    sender["Sender\nCreate private gift"] --> pool["Privacy pool\n1 UNIT commitment"]
+    pool --> share["Gift ticket\nPrivate link or QR"]
+    share --> recipient["Recipient\nOpen like a gift"]
+    recipient --> proof["Browser proof\nOwns unspent note"]
+    proof --> relayer["Relayer\nSubmits withdrawal"]
+    relayer --> wallet["Claim wallet\nReceives pool payout"]
 
-- **OpenSSL** development headers (`libssl-dev` on Ubuntu, `openssl` on macOS)
-- **protoc** Protocol Buffers compiler (`protobuf-compiler` on Ubuntu, `protobuf` on macOS)
-- **Rust** (stable, installed via [rustup](https://rustup.rs/))
-- **Node.js** 22.x LTS (`22.5+` recommended) and npm v10.9.0+
-- **Polkadot SDK binaries** (stable2512-3): `polkadot`, `polkadot-prepare-worker`, `polkadot-execute-worker` (relay), `polkadot-omni-node`, `eth-rpc`, `chain-spec-builder`, and `zombienet`. Fetch them all into `./bin/` (gitignored) with:
+    sender -. "no direct transfer" .-> wallet
 
-    ```bash
-    ./scripts/download-sdk-binaries.sh
-    ```
+    classDef person fill:#fffaf0,stroke:#d8c8a8,color:#161914,stroke-width:1px
+    classDef privateNode fill:#103f35,stroke:#103f35,color:#ffffff,stroke-width:1px
+    classDef gift fill:#ffe7dd,stroke:#d67b65,color:#401910,stroke-width:1px
+    classDef proofNode fill:#fff1d6,stroke:#c79b48,color:#161914,stroke-width:1px
 
-    This is the primary supported native setup for this repo. The stack scripts (`start-all.sh`, `start-local.sh`, etc.) run the same step automatically unless you set `STACK_DOWNLOAD_SDK_BINARIES=0`. Versions match the **Key Versions** table below.
-
-If your platform cannot use the downloader-managed binaries, see the limited-support fallback in [docs/INSTALL.md](docs/INSTALL.md#manual-binary-fallback-limited-support).
-
-The repo includes [`.nvmrc`](.nvmrc) and `engines` fields in the JavaScript projects to keep everyone on the same Node major version.
-
-### Run locally
-
-```bash
-# Start everything: node, contracts, and frontend in one command
-./scripts/start-all.sh
-# For explorer/debug runs that need historical block state:
-./scripts/start-all-archive.sh
-# Substrate RPC: ws://127.0.0.1:9944
-# Ethereum RPC:  http://127.0.0.1:8545
-# Frontend:      http://127.0.0.1:5173
+    class sender,recipient,wallet person
+    class pool,relayer privateNode
+    class share gift
+    class proof proofNode
 ```
 
-`start-all.sh` is the recommended full-feature local path. It uses Zombienet under the hood so the Statement Store example works on `polkadot-sdk stable2512-3`.
-If you know you will need historical block-state inspection in the explorer or runtime-event debugging over a longer run, use `./scripts/start-all-archive.sh` instead.
+StealthPay does not claim to hide every transaction participant. The sender's pool deposit is public, and the final pool payout is public. The privacy property is that the public chain cannot prove which deposit funded which withdrawal.
 
-For the solo-node loop, relay-backed network, frontend-only startup, port overrides, or a second local stack, see [`scripts/README.md`](scripts/README.md).
+```text
+Deposit side: sender -> privacy pool, commitment only
+Claim side: relayer -> privacy pool -> recipient, nullifier only
+Missing link: no explorer row says sender -> recipient
+```
 
-For component-specific next steps, see:
+## How It Works
 
-- [`contracts/README.md`](contracts/README.md)
-- [`web/README.md`](web/README.md)
-- [`cli/README.md`](cli/README.md)
+```mermaid
+flowchart TB
+    subgraph delivery["Encrypted gift delivery"]
+        registered["Registered recipient\nMeta-address inbox"]
+        bearer["Walletless recipient\nBearer link / QR key"]
+        encrypted["Encrypted note + memo\nStored as ciphertext"]
+    end
 
-### StealthPay private-send demo
+    subgraph poolLayer["Privacy pool"]
+        note["Private note\nnullifier + secret"]
+        commitment["Commitment\nMerkle tree leaf"]
+        root["Merkle root\npublic pool state"]
+    end
 
-After `./scripts/start-all.sh`, start the local relayer in a second terminal:
+    subgraph claimLayer["Claim"]
+        decrypt["Recipient decrypts note"]
+        path["Browser reconstructs\nMerkle path"]
+        zk["Groth16 proof\nleaf hidden"]
+        withdraw["Relayer submits\nwithdraw(...)"]
+        payout["Pool pays claim wallet"]
+    end
+
+    registered --> encrypted
+    bearer --> encrypted
+    encrypted --> decrypt
+    note --> commitment
+    commitment --> root
+    decrypt --> path
+    root --> path
+    path --> zk
+    zk --> withdraw
+    withdraw --> payout
+
+    classDef privateNode fill:#103f35,stroke:#103f35,color:#ffffff
+    classDef publicNode fill:#fff7e8,stroke:#d9c49d,color:#161914
+    classDef gift fill:#ffe7dd,stroke:#d67b65,color:#401910
+
+    class registered,bearer,encrypted gift
+    class note,decrypt,path,zk privateNode
+    class commitment,root,withdraw,payout publicNode
+```
+
+Core objects:
+
+- **Commitment**: a Poseidon hash of the private note. It becomes the public pool leaf and hides the note secret, nullifier, recipient, and memo.
+- **Nullifier hash**: revealed only at claim time so the pool can reject double-spends without learning which deposit leaf was spent.
+- **Merkle path**: reconstructed from public `Deposit` events ordered by `leafIndex`; it proves the note exists in the pool.
+- **ZK proof**: generated in the recipient's browser. It proves ownership of an unspent pool note without revealing the deposit leaf.
+- **Relayer**: pays gas and submits `withdraw(...)`. It never receives the note secret, raw nullifier, bearer gift key, stealth seed, or private memo.
+
+## Demo Flow
+
+```mermaid
+flowchart LR
+    home["Open StealthPay"] --> send["Create private gift"]
+    send --> qr["Show link + QR"]
+    qr --> open["Recipient opens gift"]
+    open --> login["Sign in with Privy\nor connect wallet"]
+    login --> claim["Claim privately"]
+    claim --> explorer["Show explorer\nno direct trail"]
+
+    classDef stage fill:#fff7e8,stroke:#d9c49d,color:#161914
+    classDef gift fill:#ffe7dd,stroke:#d67b65,color:#401910
+    classDef proof fill:#103f35,stroke:#103f35,color:#ffffff
+
+    class home,send,open,login stage
+    class qr gift
+    class claim,explorer proof
+```
+
+Suggested live walkthrough:
+
+1. Open the app and create a walletless private gift.
+2. Show the branded share card with private link and QR.
+3. Open the gift link as the recipient.
+4. Sign in with Privy to get a recoverable H160 claim wallet.
+5. Claim through the relayer.
+6. Open the explorer and show `sender -> pool`, then `pool -> claim wallet`.
+
+Do not lead with raw cryptography. Keep the demo centered on the gift experience, then use the explorer and FAQ below for technical judges.
+
+## Registered Recipient vs Walletless Gift
+
+```mermaid
+flowchart TB
+    input["Sender enters recipient\nDotNS, Substrate, or H160"] --> lookup["Resolve owner H160"]
+    lookup --> registered{"Registered\nStealthPay inbox?"}
+    registered -->|"Yes"| inbox["Encrypt note to\nrecipient meta-address"]
+    registered -->|"No"| bearer["Create walletless\nbearer link / QR"]
+    inbox --> pool["Deposit commitment\ninto privacy pool"]
+    bearer --> pool
+    pool --> claim["Recipient decrypts note\nand claims through relayer"]
+
+    classDef decision fill:#fff1d6,stroke:#c79b48,color:#161914
+    classDef privateNode fill:#103f35,stroke:#103f35,color:#ffffff
+    classDef gift fill:#ffe7dd,stroke:#d67b65,color:#401910
+    classDef neutral fill:#fff7e8,stroke:#d9c49d,color:#161914
+
+    class registered decision
+    class inbox,pool,claim privateNode
+    class bearer gift
+    class input,lookup neutral
+```
+
+You do **not** need to register to create and send a walletless gift card. Registration is only needed when a recipient wants a reusable private inbox so senders can target them by wallet or DotNS without sharing a bearer link.
+
+## Explorer Proof
+
+Use this framing when explaining the demo:
+
+```text
+Deposit side: sender -> privacy pool, commitment only
+Claim side: relayer -> privacy pool -> recipient, nullifier only
+Missing link: no explorer row says sender -> recipient
+```
+
+The sender wallet is not hidden from the deposit transaction. The recipient wallet is not hidden from the withdrawal if the recipient claims to a public wallet. What StealthPay hides is the **payment graph**: which deposit funded which withdrawal.
+
+```mermaid
+flowchart LR
+    sender["Sender wallet\npublic"] --> deposit["Deposit 1 UNIT\ninto pool"]
+    deposit --> commitment["Commitment\npublic pool leaf"]
+    commitment -. "does not reveal" .-> note["Private note\nnullifier + secret"]
+
+    note --> proof["Browser ZK proof\nmembership without leaf reveal"]
+    proof --> relayer["Relayer\nsubmits tx, pays gas"]
+    relayer --> withdraw["Pool withdrawal"]
+    withdraw --> recipient["Recipient / Privy claim wallet\npublic payout"]
+    withdraw --> nullifier["Nullifier hash\nprevents double spend"]
+
+    sender -. "no direct transfer" .-> recipient
+
+    classDef publicNode fill:#fff7e8,stroke:#d9c49d,color:#161914
+    classDef privateNode fill:#103f35,stroke:#103f35,color:#ffffff
+    classDef service fill:#ffe7dd,stroke:#d67b65,color:#401910
+
+    class sender,deposit,commitment,withdraw,recipient,nullifier publicNode
+    class note,proof privateNode
+    class relayer service
+```
+
+Key terms:
+
+- **Commitment**: a Poseidon hash of the private note data. The pool stores this as a Merkle tree leaf. It proves a valid 1 UNIT note exists, but it does not reveal the note secret, nullifier, recipient, or memo.
+- **Nullifier hash**: a public hash revealed during claim. The pool records it so the same note cannot be spent twice. It does not reveal which deposit commitment it came from.
+- **Merkle path**: the sibling hashes needed to prove the commitment is inside the pool tree. The app reconstructs this from public `Deposit` events ordered by `leafIndex`.
+- **ZK proof**: generated in the recipient's browser. It proves knowledge of an unspent note in the Merkle tree without revealing the deposit leaf.
+- **Relayer**: submits the withdrawal and pays gas. It receives proof coordinates and public inputs only, never the note secret, bearer gift key, stealth seed, or private memo.
+
+For the full judge-facing walkthrough, including meta-addresses, Merkle reconstruction, proof inputs, and FAQ, see [docs/DEMO_DIAGRAMS.md](docs/DEMO_DIAGRAMS.md).
+
+## Repository Layout
+
+- [`web/`](web/) - React product app: Home, Wallet, Send Gift, Claim, Advanced.
+- [`contracts/pvm/`](contracts/pvm/) - PVM Solidity contracts for the StealthPay registry, pool, and verifier.
+- [`relayer/`](relayer/) - private withdrawal relayer, Bulletin storage sponsor, and public-event indexer.
+- [`docs/`](docs/) - architecture notes, crypto walkthroughs, demo diagrams, deployment notes, and bug reports.
+- [`scripts/`](scripts/) - local stack, relayer, deployment, and validation helpers.
+- [`blockchain/`](blockchain/) and [`cli/`](cli/) - Polkadot runtime and CLI surfaces retained for local development and reference.
+
+## Run Locally
+
+For the browser demo against deployed Paseo contracts:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+In a second terminal, start the local relayer/indexer:
 
 ```bash
 ./scripts/start-relayer.sh
 ```
 
-For Paseo deployment and relayer use, the repo now reads secrets from a single repo-root
-`.env` file. Copy [`.env.example`](.env.example) to `.env`, then fill in `PRIVATE_KEY` for
-contract deployment and `RELAYER_PRIVATE_KEY` for the relayer. Set
-`BULLETIN_SIGNER_MNEMONIC` on the relayer for production storage sponsorship, or use a
-pre-authorized `BULLETIN_POOL_MNEMONIC` for the demo pool-account model. For walletless
-claims, set `VITE_PRIVY_APP_ID`; Privy is the primary embedded H160 wallet provider in
-the current architecture.
+The app reads local configuration from `web/.env.local` and relayer secrets from `.env`.
 
-Then the current local private-send demo loop is:
+Minimum useful env values:
 
-1. Open `http://127.0.0.1:5173/#/register`
-2. Register a recipient with either the local dev signer or a funded browser extension account
-3. Keep the shown stealth seed backup if you want to restore the same recipient on another browser
-4. Open `http://127.0.0.1:5173/#/send`
-5. Send to the registered recipient through the privacy pool and optionally add a short private text memo
-6. Encrypted gift payloads are uploaded by the storage sponsor when configured; users do not need to visit Bulletin first
-7. On Paseo, the default `Substrate Revive.call` path submits the actual pool deposit with the same Substrate wallet used for the product flow
-8. Copy the generated claim link or open `http://127.0.0.1:5173/#/claim`
-9. Use the same recipient signer (or import the saved stealth seed), let the claim page preload the gift context, unlock the wallet, and claim privately through the relayer
-10. Use `http://127.0.0.1:5173/#/scan` only when you need the older public recovery path
+```bash
+VITE_WS_URL=wss://asset-hub-paseo-rpc.n.dwellir.com
+VITE_ETH_RPC_URL=https://services.polkadothub-rpc.com/testnet
+VITE_RELAYER_URL=http://127.0.0.1:8787
+VITE_PRIVY_APP_ID=<privy-app-id>
+RELAYER_PRIVATE_KEY=<relayer-h160-private-key>
+```
 
-The claim page uses the recent block range only to find incoming gift announcements. Pool deposit history is scanned from the start so the app can reconstruct the full Merkle path for older pool leaves automatically.
+For a full local parachain/devnet run, use:
+
+```bash
+./scripts/start-all.sh
+```
+
+## Development
 
 ### Lint & format
 
@@ -217,21 +289,24 @@ cd contracts/pvm && npx hardhat test
 
 ## Documentation
 
-- [docs/TOOLS.md](docs/TOOLS.md) - All Polkadot stack components used in this template
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Deployment guide (GitHub Pages, DotNS, contracts, runtime)
-- [docs/INSTALL.md](docs/INSTALL.md) - Detailed setup instructions
 - [docs/DEMO_DIAGRAMS.md](docs/DEMO_DIAGRAMS.md) - StealthPay demo diagrams, trust boundaries, and talk track
-- [docs/BUG_REPORTS.md](docs/BUG_REPORTS.md) - StealthPay stack bugs and integration surprises discovered during the build
-- [docs/STEALTHPAY_JOURNEY.md](docs/STEALTHPAY_JOURNEY.md) - Build retrospective and current demo status
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Current StealthPay architecture notes and remaining gaps
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - StealthPay architecture notes and trust boundaries
 - [docs/CRYPTO.md](docs/CRYPTO.md) - StealthPay crypto working spec for the implemented flows
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deployment guide for browser, Dot.li, contracts, relayer, and indexer
+- [docs/BUG_REPORTS.md](docs/BUG_REPORTS.md) - stack bugs and integration surprises discovered during the build
+- [docs/STEALTHPAY_JOURNEY.md](docs/STEALTHPAY_JOURNEY.md) - build retrospective and demo status
+- [docs/TOOLS.md](docs/TOOLS.md) - Polkadot stack components used by the repo
 
-## Using Only What You Need
+## Stack
 
-- **Pallet only**: Keep [`blockchain/pallets/template/`](blockchain/pallets/template/), [`blockchain/runtime/`](blockchain/runtime/), and optionally [`cli/`](cli/). You can ignore `contracts/`, `web/src/components/ContractProofOfExistencePage.tsx`, and `eth-rpc`.
-- **Contracts only**: Keep [`contracts/`](contracts/) plus the `Revive` runtime wiring in [`blockchain/runtime/`](blockchain/runtime/). The pallet and Bulletin integration are optional.
-- **Frontend only**: The core PoE UI lives in [`web/src/pages/PalletPage.tsx`](web/src/pages/PalletPage.tsx), [`web/src/pages/EvmContractPage.tsx`](web/src/pages/EvmContractPage.tsx), and [`web/src/pages/PvmContractPage.tsx`](web/src/pages/PvmContractPage.tsx). The Accounts page, Spektr support, and Bulletin upload hook can be removed without affecting the basic claim flows.
-- **Optional integrations**: Bulletin Chain, Spektr, and DotNS are isolated extras. They are documented locally in [docs/TOOLS.md](docs/TOOLS.md) and can be skipped entirely for workshops or hackathons.
+StealthPay is built on the Polkadot stack:
+
+- `pallet-revive` / PVM smart contracts for the registry, pool, and verifier.
+- Bulletin Chain for encrypted gift payload storage.
+- DotNS / Dot.li as the intended Polkadot-native distribution layer.
+- PAPI and viem for frontend chain interactions.
+- Privy for walletless H160 claim-wallet recovery.
+- Groth16 and Poseidon for the private withdrawal circuit.
 
 ## Key Versions
 

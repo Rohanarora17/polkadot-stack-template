@@ -127,7 +127,8 @@ export async function generatePrivateWithdrawProof(args: {
 function getZkAssetUrl(fileName: "private-withdraw.wasm" | "private-withdraw.zkey") {
 	const remoteBase = import.meta.env.VITE_ZK_ASSET_BASE_URL;
 	if (typeof remoteBase === "string" && remoteBase.trim()) {
-		return new URL(fileName, ensureTrailingSlash(remoteBase.trim())).toString();
+		const resolvedBase = new URL(ensureTrailingSlash(remoteBase.trim()), window.location.origin);
+		return new URL(fileName, resolvedBase).toString();
 	}
 
 	const baseUrl = new URL(import.meta.env.BASE_URL || "/", window.location.origin);

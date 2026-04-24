@@ -1,284 +1,121 @@
-# Crypto Notes
+# StealthPay Crypto
 
-This file is the StealthPay crypto working spec for the code that currently exists in this repo.
-
-## Status
-
-Implemented now:
-
-- dedicated stealth seed generation, persistence, export, and import
-- deterministic stealth key derivation from the dedicated stealth seed plus chain ID
-- private note encryption and decryption from the stealth shared secret
-- fixed-denomination privacy-pool note construction
-- bearer gift envelope encryption and decryption for walletless claim links
-- encrypted note backup export and import
-- browser-worker Groth16 proof generation inputs for private withdraw
-- relayer submission with proof coordinates and public inputs
-- meta-address encoding and decoding
-- stealth-address derivation for sender-side payments
-- recipient-side announcement scan and match logic
-- stealth private-key recovery from `(spendingPrivKey, sharedSecret)`
-- recipient-side withdraw signing from the recovered stealth private key
-- round-trip tests in [web/src/crypto/stealth.test.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/stealth.test.ts)
-
-Not implemented yet:
-
-- formal published test vectors in docs
-
-## Libraries
-
-Only these crypto libraries are allowed in the current browser stealth flow:
-
-- `@noble/ciphers/chacha.js`
-- `@noble/ciphers/utils.js`
-- `@noble/hashes/pbkdf2.js`
-- `@noble/hashes/sha2.js`
-- `@noble/curves/secp256k1.js`
-- `@noble/hashes/sha3.js`
-- `@noble/hashes/utils.js`
-
-Do not use these in `web/src/crypto`:
-
-- `ethers`
-- `web3`
-- `crypto.subtle`
-- `Math.random`
-- `Buffer`
-- wrong-curve imports such as `ed25519`, `sr25519`, or `secp256r1`
-
-## Current Scheme
-
-All current stealth math is on `secp256k1`.
-
-- spending private key: `s`
-- spending public key: `S = s * G`
-- viewing private key: `v`
-- viewing public key: `V = v * G`
-
-The old signature diagnostic message is:
+StealthPay uses cryptography for one purpose: let a sender fund a public pool while the recipient later proves they own one unspent gift note without revealing which deposit they are spending.
 
 ```text
-StealthPay v1: stealth keys for chain <chainId>
+Deposit side:  sender -> privacy pool, commitment only
+Claim side:    relayer -> privacy pool -> claim wallet, nullifier only
+Hidden link:   which commitment produced which nullifier
 ```
 
-The production Register / Scan flow no longer derives keys directly from a fresh wallet
-signature. Instead it uses a dedicated 32-byte stealth seed that is:
+This document explains the cryptographic model used by the current StealthPay demo and implementation.
 
-- generated once on first registration
-- stored locally per `(originSs58, chainId)`
-- shown to the user for backup/export
-- accepted back through manual import on a fresh browser
+## Threat Model
 
-The code derives:
+StealthPay hides the payment graph, not all activity.
+
+Public observers can see:
+
+- a sender deposited `1 UNIT` into the pool
+- a relayer submitted a withdrawal
+- a claim wallet received `1 UNIT - fee`
+- the pool address, Merkle root, commitment, nullifier hash, and transaction metadata
+
+Public observers cannot directly see:
+
+- which deposit funded which withdrawal
+- the note secret
+- the raw nullifier
+- the private memo
+- the bearer gift key
+- which registered inbox a deposit was meant for
+
+StealthPay does not hide:
+
+- that the sender used the pool
+- that a wallet received from the pool
+- timing patterns in a small anonymity set
+- amount, because this demo intentionally uses one fixed denomination
+
+## Core Note Model
+
+Every private gift creates a pool note:
 
 ```text
-spendingPrivKey = keccak256(seed || "chain:<chainId>" || "spending") -> scalar mod n
-viewingPrivKey  = keccak256(seed || "chain:<chainId>" || "viewing")  -> scalar mod n
+scope        = pool.scope()
+nullifier    = random field element
+secret       = random field element
+commitment   = Poseidon(scope, nullifier, secret)
+nullifierHash = Poseidon(scope, nullifier)
 ```
 
-This is implemented in [web/src/crypto/stealth.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/stealth.ts) via `deriveKeysFromSeed(...)`.
+The `commitment` is public and becomes a Merkle tree leaf.
 
-The old `deriveKeysFromSignature(...)` helper still exists only for the hidden lab / diagnostics flow.
+The `nullifierHash` is public only when the note is spent. It prevents double-spending without revealing the raw `nullifier`.
 
-## Meta-Address Format
+The `secret` and raw `nullifier` are private witness values. They must never be sent to the relayer or stored by backend services.
 
-The current encoded meta-address is:
+## Fixed Denomination
+
+The pool uses a fixed `1 UNIT` denomination.
+
+This is intentional. If gifts had arbitrary amounts, observers could match deposits and withdrawals by value. Fixed denomination gives every deposit the same visible amount and preserves the anonymity set.
+
+Variable private balances would require a UTXO or join-split design. That is a larger architecture and not part of the current StealthPay demo.
+
+## Merkle Tree
+
+Every deposit appends one commitment leaf:
 
 ```text
-compressedSpendingPubKey (33 bytes) || compressedViewingPubKey (33 bytes)
+leaf 0 = commitment A
+leaf 1 = commitment B
+leaf 2 = commitment C
+...
 ```
 
-Total encoded length:
+To claim, the browser reconstructs the pool tree:
 
-- `66 bytes`
-- hex encoded as `0x` + 132 hex chars
+1. Fetch public deposit events for the pool.
+2. Sort by `leafIndex`.
+3. Rebuild the Poseidon Merkle tree.
+4. Find the leaf matching the decrypted gift note commitment.
+5. Build the Merkle path and path indices.
 
-Helpers:
+The Merkle path is private witness data. The contract verifier sees only the public root and the Groth16 proof.
 
-- `encodeMetaAddress(...)`
-- `encodeMetaAddressHex(...)`
-- `decodeMetaAddress(...)`
+## Why ZK Is Needed
 
-## Sender-Side Derivation
-
-Given recipient `(S, V)`:
-
-1. Generate ephemeral secret `r`
-2. Compute `R = r * G`
-3. Compute shared point `Q = r * V`
-4. Compute `sharedSecret = keccak256(compressed(Q))`
-5. Compute stealth point `P = S + H(sharedSecret) * G`
-6. Compute stealth address from the uncompressed public key:
+Without ZK, the recipient would have to reveal:
 
 ```text
-addr(P) = keccak256(uncompressedPublicKeyWithout04Prefix)[12:32]
+I am spending leaf N.
 ```
 
-The current sender output is:
+That would link the withdrawal to the deposit.
 
-- `stealthAddress`
-- `ephemeralPubKey`
-- `viewTag = sharedSecret[0]`
-- `sharedSecret`
-
-This is implemented in `deriveStealthAddress(...)`.
-
-## Recipient Scan Logic
-
-The current scan algorithm for a candidate announcement uses:
+With ZK, the browser proves:
 
 ```text
-sharedSecret' = keccak256(compressed(v * R))
-if sharedSecret'[0] != viewTag: reject
-P' = S + H(sharedSecret') * G
-if addr(P') != announcedStealthAddress: reject
-else match
+I know nullifier and secret.
+Poseidon(scope, nullifier, secret) is in this Merkle root.
+Poseidon(scope, nullifier) equals this public nullifierHash.
+This withdrawal is bound to recipient, relayer, fee, expiry, pool, and chain.
 ```
 
-This is implemented in `scanAnnouncement(...)`.
+The proof does not reveal:
 
-The current recovered stealth private key is:
+- the deposit leaf
+- note secret
+- raw nullifier
+- private memo
+- bearer key
 
-```text
-stealthPriv = (s + H(sharedSecret)) mod n
-```
+The pool contract calls the Groth16 verifier contract. If the proof is valid and the nullifier has not been spent, the pool pays the recipient.
 
-This is implemented in `deriveStealthPrivateKey(...)`.
+## Withdraw Context Binding
 
-## Legacy Public Recovery Flow
-
-The older public recovery UX uses the recovered stealth private key directly as a local
-secp256k1 account for a plain native-token transfer. This is no longer the primary privacy
-path, but it remains useful as an advanced recovery and debugging route.
-
-For a matched stealth payment, `ScanPage` now:
-
-1. recovers `stealthPriv = (s + H(sharedSecret)) mod n`
-2. converts that 32-byte key into a local EVM-style account
-3. estimates the transfer gas for a plain value transfer
-4. computes:
-
-```text
-withdrawAmount = stealthBalance - (gasLimit * gasPrice)
-```
-
-5. sends the spendable balance to the chosen destination address
-
-This is implemented in:
-
-- [web/src/pages/ScanPage.tsx](/Users/rohan/polkadot-stack-template/web/src/pages/ScanPage.tsx)
-- [web/src/utils/stealthWithdraw.ts](/Users/rohan/polkadot-stack-template/web/src/utils/stealthWithdraw.ts)
-
-## Direct Private Pool Note Delivery
-
-The current primary privacy path no longer sends value to the stealth address first.
-
-Instead the sender uses the stealth ECDH output only to privately deliver a fixed-denomination pool
-note to the recipient.
-
-For the current v1 flow:
-
-- `denomination = 1 UNIT`
-- `scope = pool.scope()`
-- `nullifier` and `secret` are random field elements
-- `commitment = Poseidon(scope, nullifier, secret)`
-- `nullifierHash = Poseidon(scope, nullifier)`
-
-The sender uploads one encrypted Bulletin payload that contains:
-
-- the note material needed for later private withdraw
-- an optional human memo string
-
-The encryption key is derived from the same stealth `sharedSecret`:
-
-```text
-privateNoteKey = keccak256(sharedSecret || "private-note:v1")
-```
-
-The payload is encrypted with `XChaCha20-Poly1305` and uploaded as a compact JSON envelope:
-
-```json
-{ "v": 1, "n": "0x...", "c": "0x..." }
-```
-
-The on-chain `memoHash` is:
-
-```text
-memoHash = blake2b-256(encryptedEnvelopeBytes)
-```
-
-The direct sender-to-pool contract call is:
-
-- `announcePrivateDeposit(pool, commitment, ephemeralPubKey, viewTag, memoHash)`
-
-## Text Memo Encryption
-
-Human text memos are still optional. When present, they are included inside the same encrypted
-private delivery payload rather than stored as a separate Bulletin object.
-
-The older standalone memo flow is still relevant for the legacy public stealth transfer path, but
-the primary privacy v1 path now bundles:
-
-- note material
-- optional text memo
-
-into one encrypted Bulletin blob.
-
-The memo-specific encryption primitive is still:
-
-```text
-memoKey = keccak256(sharedSecret || "memo:v1")
-```
-
-The sender then:
-
-1. UTF-8 encodes the memo text
-2. rejects it if it exceeds `512 bytes`
-3. generates a random 24-byte nonce
-4. encrypts the text with `XChaCha20-Poly1305`
-5. encodes the uploaded envelope as compact JSON bytes:
-
-```json
-{ "v": 1, "n": "0x...", "c": "0x..." }
-```
-
-The uploaded Bulletin bytes are hashed as:
-
-```text
-memoHash = blake2b-256(envelopeBytes)
-```
-
-`memoHash` is the only memo-related value stored in the `Announcement` event.
-
-This is implemented in:
-
-- [web/src/crypto/memo.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/memo.ts)
-- [web/src/hooks/useBulletin.ts](/Users/rohan/polkadot-stack-template/web/src/hooks/useBulletin.ts)
-- [web/src/crypto/privateNote.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/privateNote.ts)
-- [web/src/crypto/privatePool.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/privatePool.ts)
-
-## Private Withdraw Context
-
-The current private pool v1 uses:
-
-- one pool
-- one denomination
-- one withdraw circuit
-
-The public inputs are:
-
-- `root`
-- `nullifierHash`
-- `scope`
-- `context`
-
-The private inputs are:
-
-- `nullifier`
-- `secret`
-- Merkle path
-
-The relayer-bound context is:
+The withdrawal proof binds the public withdrawal context:
 
 ```text
 context = keccak256(
@@ -292,79 +129,283 @@ context = keccak256(
 ) mod SNARK_SCALAR_FIELD
 ```
 
-This prevents the relayer or client from changing recipient or fee after proof generation.
+This prevents a relayer from changing the recipient or fee after the browser creates the proof.
 
-## Encrypted Note Backup
+Public inputs:
 
-Private withdrawal is no longer gated behind an encrypted note backup export in the main
-consumer UI. Registered gifts can be rediscovered through the recipient's stealth identity,
-and walletless bearer gifts use the embedded H160 wallet provider when configured.
+- `root`
+- `nullifierHash`
+- `scope`
+- `context`
 
-The encrypted note backup format still exists as an advanced recovery artifact.
+Private inputs:
 
-The current backup format is:
+- `nullifier`
+- `secret`
+- Merkle path
+- path indices
 
-- versioned JSON
-- PBKDF2-SHA256 key derivation
-- XChaCha20-Poly1305 payload encryption
-- includes pool address, denomination, and the note material required for recovery
+## Relayer Boundary
 
-This is implemented in:
+The relayer is a transaction submission service, not a custodian.
 
+The relayer receives:
+
+- Groth16 proof coordinates: `pA`, `pB`, `pC`
+- public inputs: root, nullifier hash, recipient, relayer, fee, expiry
+
+The relayer must not receive:
+
+- note secret
+- raw nullifier
+- Merkle witness
+- private memo
+- bearer gift key
+- stealth seed
+- wallet private key
+
+The recipient could technically submit the proof directly, but then their wallet would pay gas and become the transaction sender. The relayer improves UX and avoids making the recipient pre-fund the claim wallet.
+
+## Registered Recipient Crypto
+
+Registered recipients publish a reusable StealthPay private inbox.
+
+The inbox is a meta-address:
+
+```text
+compressedSpendingPubKey (33 bytes) || compressedViewingPubKey (33 bytes)
+```
+
+Encoded size:
+
+- `66 bytes`
+- hex encoded as `0x` + 132 hex chars
+
+The private keys are derived from a dedicated StealthPay stealth seed:
+
+```text
+spendingPrivKey = keccak256(seed || "chain:<chainId>" || "spending") -> scalar mod n
+viewingPrivKey  = keccak256(seed || "chain:<chainId>" || "viewing")  -> scalar mod n
+```
+
+The meta-address is public and registered under the recipient owner H160. That means observers can know the wallet has a StealthPay inbox.
+
+It does not reveal:
+
+- the stealth seed
+- spending private key
+- viewing private key
+- which pool commitments belong to that inbox
+- which withdrawals spend those commitments
+
+Implementation:
+
+- [web/src/crypto/stealth.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/stealth.ts)
+- `deriveKeysFromSeed(...)`
+- `encodeMetaAddress(...)`
+- `decodeMetaAddress(...)`
+
+## Registered Gift Delivery
+
+Given recipient public keys `(S, V)`:
+
+```text
+S = spending public key
+V = viewing public key
+```
+
+The sender derives an ECDH shared secret:
+
+```text
+r = random ephemeral secret
+R = r * G
+Q = r * V
+sharedSecret = keccak256(compressed(Q))
+viewTag = sharedSecret[0]
+```
+
+The sender then encrypts the private note payload with a key derived from `sharedSecret`:
+
+```text
+privateNoteKey = keccak256(sharedSecret || "private-note:v1")
+```
+
+The public announcement includes:
+
+```text
+pool
+commitment
+ephemeralPubKey = R
+viewTag
+memoHash
+```
+
+The recipient scans announcements by computing:
+
+```text
+sharedSecret' = keccak256(compressed(v * R))
+if sharedSecret'[0] != viewTag: reject
+try decrypt note payload
+if decrypted commitment matches a pool deposit: gift found
+```
+
+The `viewTag` is only a cheap filter. It is not a privacy boundary.
+
+## Walletless Bearer Gift Crypto
+
+Walletless gifts do not require a registered recipient inbox.
+
+Flow:
+
+1. Sender creates the same private pool note.
+2. Sender generates a random high-entropy bearer gift key.
+3. Sender encrypts the note and optional memo into a Bulletin envelope.
+4. Link or QR carries `mode=bearer`, routing metadata, `memo`, and `key`.
+5. Recipient opens the link, decrypts locally, and claims to a Privy embedded H160 wallet.
+
+Security truth:
+
+- the bearer link or QR is the claim capability until redeemed
+- anyone with the unredeemed link can claim
+- backend services still cannot claim without the key
+- this is a link-custody risk, not an on-chain privacy regression
+
+The link key is sensitive. It should not be posted publicly or sent to group chats.
+
+## Bulletin Payloads
+
+Bulletin stores ciphertext only.
+
+Payloads can include:
+
+- encrypted private note material
+- optional encrypted human memo
+- pool address
+- chain id
+- created timestamp
+
+The on-chain `memoHash` is:
+
+```text
+memoHash = blake2b-256(encryptedEnvelopeBytes)
+```
+
+`memoHash` is a content pointer and integrity check. It does not reveal the memo or note.
+
+Implementation:
+
+- [web/src/crypto/memo.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/memo.ts)
+- [web/src/hooks/useBulletin.ts](/Users/rohan/polkadot-stack-template/web/src/hooks/useBulletin.ts)
+- [web/src/crypto/privateNote.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/privateNote.ts)
 - [web/src/crypto/privatePool.ts](/Users/rohan/polkadot-stack-template/web/src/crypto/privatePool.ts)
 
-## Current Chain Usage
+## Announcement Purpose
 
-The current contract and frontend use:
+An announcement is the public delivery pointer for an encrypted gift.
 
-- `setMetaAddress(spendingPubKey, viewingPubKey)` to register
-- `announceAndPay(stealthAddress, ephemeralPubKey, viewTag, memoHash)` to send
-- `announcePrivateDeposit(pool, commitment, ephemeralPubKey, viewTag, memoHash)` for the direct sender-to-pool privacy path
+The registry call is:
 
-For the current MVP slice:
+```text
+announcePrivateDeposit(pool, commitment, ephemeralPubKey, viewTag, memoHash)
+```
 
-- `memoHash = 0x00..00` means “no memo”
-- non-zero `memoHash` means the sender uploaded an encrypted text memo envelope to Bulletin Chain
-- `RegisterPage` and `ScanPage` share the same stored/imported stealth seed instead of asking
-  the wallet to sign on every page load
-- the private claim UI uses the StealthPay public indexer first for exact commitment, memo hash, and nullifier lookup
-- if the indexer is unavailable, it falls back to browser cache, Blockscout / `eth_getLogs`, and bounded `Revive.ContractEmitted` runtime-event decoding
-- scan confirmation now also attempts Bulletin fetch/decrypt for matched non-zero memos
+It helps the recipient app discover encrypted gifts without exposing the note.
 
-## Current Verification
+For registered gifts, announcements are important because the recipient scans them with their viewing key.
 
-The current crypto tests cover:
+For walletless bearer gifts, announcements are non-blocking enrichment because the link already contains the `memo` and `key`.
 
-- same signature + same chain ID -> same keys
-- same signature + different chain ID -> different keys
-- same dedicated seed + same chain ID -> same keys
-- same dedicated seed + different chain ID -> different keys
-- text memo encrypt/decrypt round-trip
-- withdraw amount calculation subtracts the estimated fee correctly
-- wrong shared secret fails text memo decryption
-- repeated encryption of the same text produces different nonce/ciphertext
-- `memoHash` is deterministic for the exact uploaded bytes
-- sender derives a stealth payment that the intended recipient matches
+## Indexer Role
+
+The indexer stores public event facts only:
+
+- deposits by `commitment`
+- announcements by `memoHash`
+- withdrawals by `nullifierHash`
+- block number, block hash, event reference, pool, registry
+
+It never stores:
+
+- decrypted note
+- raw nullifier
+- note secret
+- gift key
+- stealth seed
+- wallet private key
+- plaintext memo
+
+Frontend lookup order:
+
+1. public StealthPay indexer
+2. local browser cache
+3. Blockscout / ETH RPC logs
+4. bounded `Revive.ContractEmitted` runtime-event fallback
+
+Bearer claims should not block on announcement lookup. Once the link decrypts the note, exact deposit lookup by commitment is enough to build the Merkle path.
+
+## Wallet And Key Roles
+
+StealthPay uses different keys for different jobs:
+
+| Key / Wallet | Purpose | Public? | Custody |
+|---|---|---:|---|
+| Sender wallet | funds pool deposit and registration | yes | user wallet / P-wallet / extension |
+| Registered meta-address | public private inbox for registered recipients | yes | derived from stealth seed |
+| Stealth seed | derives registered inbox keys | no | user-controlled backup/import |
+| Bearer gift key | decrypts walletless gift note | no until shared | link/QR holder |
+| Privy claim wallet | receives walletless payout | yes after claim | Privy embedded wallet recovery |
+| Relayer key | submits withdrawal txs | yes | StealthPay relayer operator |
+| Bulletin sponsor key | uploads ciphertext when user storage auth is unavailable | yes | storage sponsor only |
+
+The storage sponsor can upload encrypted bytes. It is not the sender, recipient, verifier, or spend authority.
+
+## Advanced Recovery
+
+The main consumer claim flow does not require downloading a recovery file.
+
+Advanced recovery still exists for technical users:
+
+- registered recipients can restore their StealthPay stealth seed
+- encrypted note backup import/export exists as a recovery artifact
+- legacy public stealth recovery tools remain under advanced surfaces
+
+These are not the default walletless claim path. Walletless claims use the Privy embedded H160 wallet for recoverable recipient custody.
+
+## Tests
+
+Crypto tests cover:
+
+- deterministic key derivation from a dedicated stealth seed
+- different chain IDs produce different derived keys
+- meta-address encode/decode
+- sender derives a gift that the intended recipient can match
 - wrong recipient does not match
-- recovered stealth private key maps back to the announced stealth address
-- announcement matching across a list of candidates in `matchAnnouncements(...)`
+- text memo encrypt/decrypt round trip
+- wrong shared secret fails decryption
+- repeated encryption creates different nonce/ciphertext
+- `memoHash` is deterministic for exact uploaded bytes
+- private pool note and commitment construction
+- bearer envelope encrypt/decrypt round trip
+- wrong bearer key cannot decrypt
 
 Run:
 
 ```bash
-cd /Users/rohan/polkadot-stack-template/web && npm run test:crypto
+cd /Users/rohan/polkadot-stack-template/web
+npm run test:crypto
 ```
 
-## Known Risks and Open Questions
+## Demo Explanation
 
-- The dedicated seed must be backed up if the user wants to restore scanning on a new browser or device.
-- The old signature-derived-key path is not safe for production recovery in this repo because `sr25519` message signatures are not stable across repeated signing calls.
-- The current flow proves receive-side derivation and announce/send behavior, and now has a local-stack runtime fallback for recipient-side scan UX.
-- The current private withdraw path is a real Groth16-verified pool withdraw through a relayer, but the hidden stealth-to-pool fallback architecture is not active yet.
-- The older plain native transfer from the recovered stealth account still exists only as the public recovery path.
-- Memo upload happens before the on-chain send in the current UX, so a failed `announceAndPay` can still leave an unused Bulletin blob.
-- Browser proof generation works in a worker. The consumer path should not send private witness material to the relayer; the relayer's legacy `proofInput` fallback is a remaining cleanup item, not the target production trust model.
-- Bearer gift links and QR codes are sensitive until redemption because the gift key in the hash route can decrypt the private note envelope.
-- The current implementation uses one-byte `viewTag` filtering only after the sender-side derivation; large-scale scan performance still needs to be proven in the actual `ScanPage`.
-- The runtime-event fallback depends on retained Substrate state, so very old local blocks can still fall out of scan reach even when contract state remains intact.
-- Bulletin authorization, gateway availability, and retention behavior remain external dependencies even though the text memo flow is now implemented.
+Use this explanation with judges:
+
+> A gift is a private note inside a fixed-denomination pool. On deposit, the chain only sees a commitment. On claim, the chain only sees a nullifier hash and a ZK proof. The proof says the claimant knows an unspent note inside the Merkle tree, but it does not reveal which deposit leaf they are spending. The relayer submits the proof and pays gas, but it never receives the note secret or bearer key. That is why the explorer shows sender to pool and pool to claim wallet, but no direct sender-to-recipient payment trail.
+
+## Known Limits
+
+- Fixed denomination protects the amount link, but it also means every demo gift is exactly `1 UNIT`.
+- Privacy depends on anonymity set size; very small pools are easier to reason about by timing.
+- Bearer links and QR codes are sensitive until redeemed.
+- Registered inbox ownership is public; what remains hidden is which gifts belong to that inbox.
+- Dot.li / P-wallet host signing is not the primary demo path until the `Revive.map_account()` signing flow is stable.
+- Bulletin availability and retention are external dependencies for encrypted payload delivery.
