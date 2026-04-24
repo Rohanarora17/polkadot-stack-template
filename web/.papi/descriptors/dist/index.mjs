@@ -14,8 +14,8 @@ var toBinary = (base64) => {
 };
 
 // .papi/descriptors/src/stack_template.ts
-var descriptorValues = import("./descriptors-WIWSIN73.mjs").then((module) => module["Stack_template"]);
-var metadataTypes = import("./metadataTypes-N3ONLFCD.mjs").then(
+var descriptorValues = import("./descriptors-5D57NPAS.mjs").then((module) => module["Stack_template"]);
+var metadataTypes = import("./metadataTypes-4X4QMKJA.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset = {};
@@ -28,8 +28,8 @@ var _allDescriptors = { descriptors: descriptorValues, metadataTypes, asset, ext
 var stack_template_default = _allDescriptors;
 
 // .papi/descriptors/src/bulletin.ts
-var descriptorValues2 = import("./descriptors-WIWSIN73.mjs").then((module) => module["Bulletin"]);
-var metadataTypes2 = import("./metadataTypes-N3ONLFCD.mjs").then(
+var descriptorValues2 = import("./descriptors-5D57NPAS.mjs").then((module) => module["Bulletin"]);
+var metadataTypes2 = import("./metadataTypes-4X4QMKJA.mjs").then(
   (module) => toBinary("default" in module ? module.default : module)
 );
 var asset2 = {};
@@ -40,6 +40,20 @@ var getMetadata2 = () => import("./bulletin_metadata-6D4OUQ3Y.mjs").then(
 var genesis2 = "0x744960c32e3a3df5440e1ecd4d34096f1ce2230d7016a5ada8a765d5a622b4ea";
 var _allDescriptors2 = { descriptors: descriptorValues2, metadataTypes: metadataTypes2, asset: asset2, extensions: extensions2, getMetadata: getMetadata2, genesis: genesis2 };
 var bulletin_default = _allDescriptors2;
+
+// .papi/descriptors/src/paseo_hub.ts
+var descriptorValues3 = import("./descriptors-5D57NPAS.mjs").then((module) => module["Paseo_hub"]);
+var metadataTypes3 = import("./metadataTypes-4X4QMKJA.mjs").then(
+  (module) => toBinary("default" in module ? module.default : module)
+);
+var asset3 = {};
+var extensions3 = {};
+var getMetadata3 = () => import("./paseo_hub_metadata-G4QNRMZH.mjs").then(
+  (module) => toBinary("default" in module ? module.default : module)
+);
+var genesis3 = "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+var _allDescriptors3 = { descriptors: descriptorValues3, metadataTypes: metadataTypes3, asset: asset3, extensions: extensions3, getMetadata: getMetadata3, genesis: genesis3 };
+var paseo_hub_default = _allDescriptors3;
 
 // .papi/descriptors/src/common-types.ts
 import { _Enum } from "polkadot-api";
@@ -92,13 +106,43 @@ var XcmV4AssetWildAsset = _Enum;
 var TransactionValidityUnknownTransaction = _Enum;
 var TransactionValidityTransactionSource = _Enum;
 var XcmVersionedAsset = _Enum;
+var PreimageEvent = _Enum;
+var PreimagePalletHoldReason = _Enum;
+var CommonClaimsEvent = _Enum;
+var ConvictionVotingVoteAccountVote = _Enum;
+var PreimagesBounded = _Enum;
+var ChildBountiesEvent = _Enum;
+var NominationPoolsPoolState = _Enum;
+var NominationPoolsCommissionClaimPermission = _Enum;
+var NominationPoolsClaimPermission = _Enum;
+var BagsListEvent = _Enum;
+var StakingRewardDestination = _Enum;
+var StakingForcing = _Enum;
+var PreimageOldRequestStatus = _Enum;
+var PreimageRequestStatus = _Enum;
+var GovernanceOrigin = _Enum;
+var WestendRuntimeRuntimeFreezeReason = _Enum;
+var NominationPoolsPalletFreezeReason = _Enum;
+var Version = _Enum;
+var ClaimsStatementKind = _Enum;
+var TreasuryPaymentState = _Enum;
+var ConvictionVotingVoteVoting = _Enum;
+var VotingConviction = _Enum;
+var TraitsScheduleDispatchTime = _Enum;
+var ChildBountyStatus = _Enum;
+var ReferendaTypesCurve = _Enum;
+var NominationPoolsBondExtra = _Enum;
+var StakingPalletConfigOpBig = _Enum;
+var StakingPalletConfigOp = _Enum;
+var NominationPoolsConfigOp = _Enum;
 
 // .papi/descriptors/src/index.ts
 var metadatas = {
   ["0x5d82548ee8362ca123514269ea6df6f1ad252e4f120516b810bcb2cb29957eb8"]: stack_template_default,
-  ["0x1a82e5143be3211ded412b0368b486ce83bd41a80ec95eb267f6c204adda8365"]: bulletin_default
+  ["0x1a82e5143be3211ded412b0368b486ce83bd41a80ec95eb267f6c204adda8365"]: bulletin_default,
+  ["0x8d6a039a69478214c5846f4504e80f3cd3d2374b4c964976b071aececac586fd"]: paseo_hub_default
 };
-var getMetadata3 = async (codeHash) => {
+var getMetadata4 = async (codeHash) => {
   try {
     return await metadatas[codeHash].getMetadata();
   } catch {
@@ -107,21 +151,50 @@ var getMetadata3 = async (codeHash) => {
 };
 export {
   ArithmeticError,
+  BagsListEvent,
   BalanceStatus,
   BalancesAdjustmentDirection,
   BalancesTypesReasons,
+  ChildBountiesEvent,
+  ChildBountyStatus,
+  ClaimsStatementKind,
+  CommonClaimsEvent,
+  ConvictionVotingVoteAccountVote,
+  ConvictionVotingVoteVoting,
   DigestItem,
   DispatchClass,
+  GovernanceOrigin,
   MultiAddress,
+  NominationPoolsBondExtra,
+  NominationPoolsClaimPermission,
+  NominationPoolsCommissionClaimPermission,
+  NominationPoolsConfigOp,
+  NominationPoolsPalletFreezeReason,
+  NominationPoolsPoolState,
   Phase,
+  PreimageEvent,
+  PreimageOldRequestStatus,
+  PreimagePalletHoldReason,
+  PreimageRequestStatus,
+  PreimagesBounded,
+  ReferendaTypesCurve,
+  StakingForcing,
+  StakingPalletConfigOp,
+  StakingPalletConfigOpBig,
+  StakingRewardDestination,
   TokenError,
+  TraitsScheduleDispatchTime,
   TransactionPaymentEvent,
   TransactionPaymentReleases,
   TransactionValidityTransactionSource,
   TransactionValidityUnknownTransaction,
   TransactionalError,
+  TreasuryPaymentState,
   UpgradeGoAhead,
   UpgradeRestriction,
+  Version,
+  VotingConviction,
+  WestendRuntimeRuntimeFreezeReason,
   XcmPalletVersionMigrationStage,
   XcmV2JunctionBodyPart,
   XcmV2MultiassetWildFungibility,
@@ -156,6 +229,7 @@ export {
   XcmVersionedLocation,
   XcmVersionedXcm,
   bulletin_default as bulletin,
-  getMetadata3 as getMetadata,
+  getMetadata4 as getMetadata,
+  paseo_hub_default as paseo_hub,
   stack_template_default as stack_template
 };

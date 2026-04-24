@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { stack_template } from "@polkadot-api/descriptors";
 import { Binary } from "polkadot-api";
 import type { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { type Address, encodeFunctionData } from "viem";
@@ -9,17 +8,19 @@ import { deployments } from "../config/deployments";
 import { getPublicClient } from "../config/evm";
 import { stealthPayAbi } from "../config/stealthPay";
 import { deriveKeysFromSeed, encodeMetaAddressHex, type MetaAddressKeys } from "../crypto/stealth";
-import { getClient } from "../hooks/useChain";
 import { devAccounts } from "../hooks/useAccount";
 import { useChainStore } from "../store/chainStore";
 import {
 	DEFAULT_STORAGE_DEPOSIT_LIMIT,
 	DEFAULT_WEIGHT_LIMIT,
 	ensureMappedForRevive,
+	getStealthTypedApi,
+	mapAccountForRevive,
 	resolveReviveAddress,
 	toReviveDest,
 } from "../utils/stealthRevive";
 import { formatDispatchError } from "../utils/format";
+import { submitPapiTx } from "../utils/submitPapiTx";
 import {
 	createBrowserExtensionTxSession,
 	createDevTxSession,
@@ -30,6 +31,7 @@ import {
 	type TransactionWalletSession,
 } from "../wallet/stealthRegister";
 import { resolveStealthSeed, type ResolvedStealthSeed } from "../utils/stealthSeed";
+import { readWalletPreference, writeWalletPreference } from "../utils/walletPreference";
 
 const REGISTER_STORAGE_KEY_PREFIX = "stealthpay-register-address";
 
@@ -76,6 +78,7 @@ export default function RegisterPage() {
 	const [status, setStatus] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const [mappingSubmitting, setMappingSubmitting] = useState(false);
 
 	const defaultAddress = deployments.stealthPayPvm ?? "";
 	const storageKey = useMemo(() => scopedStorageKey(ethRpcUrl), [ethRpcUrl]);
@@ -86,9 +89,14 @@ export default function RegisterPage() {
 
 	useEffect(() => {
 		const wallets = listBrowserExtensions();
+		const preferred = readWalletPreference();
 		setAvailableExtensionWallets(wallets);
 		setSelectedExtensionWallet((current) =>
-			current && wallets.includes(current) ? current : (wallets[0] ?? ""),
+			current && wallets.includes(current)
+				? current
+				: preferred?.walletName && wallets.includes(preferred.walletName)
+					? preferred.walletName
+					: (wallets[0] ?? ""),
 		);
 	}, []);
 
@@ -109,10 +117,14 @@ export default function RegisterPage() {
 				}
 
 				setExtensionAccounts(accounts);
+				const preferred = readWalletPreference();
 				setSelectedExtensionAccount((current) =>
 					current && accounts.some((account) => account.address === current)
 						? current
-						: (accounts[0]?.address ?? ""),
+						: preferred?.walletName === selectedExtensionWallet &&
+							  accounts.some((account) => account.address === preferred.accountAddress)
+							? preferred.accountAddress
+							: (accounts[0]?.address ?? ""),
 				);
 			} catch (cause) {
 				console.error(cause);
@@ -130,6 +142,16 @@ export default function RegisterPage() {
 			cancelled = true;
 		};
 	}, [walletMode, selectedExtensionWallet]);
+
+	useEffect(() => {
+		if (walletMode !== "browser-extension" || !selectedExtensionWallet) {
+			return;
+		}
+		const account =
+			extensionAccounts.find((candidate) => candidate.address === selectedExtensionAccount) ??
+			null;
+		writeWalletPreference({ account, walletName: selectedExtensionWallet });
+	}, [extensionAccounts, selectedExtensionAccount, selectedExtensionWallet, walletMode]);
 
 	function saveContractAddress(value: string) {
 		setContractAddress(value);
@@ -203,10 +225,11 @@ export default function RegisterPage() {
 				throw new Error(`No contract code found at ${contractAddress} on ${ethRpcUrl}.`);
 			}
 
-			const typedApi = getClient(wsUrl).getTypedApi(stack_template);
+			const typedApi = getStealthTypedApi(wsUrl);
 
 			setStatus("Ensuring the signer account is mapped for Revive contract calls...");
 			await ensureMappedForRevive({
+				originSs58: snapshot.session.originSs58,
 				wsUrl,
 				txSigner: snapshot.session.txSigner,
 			});
@@ -224,13 +247,17 @@ export default function RegisterPage() {
 			>[0]["dest"];
 
 			setStatus("Submitting Revive.call(setMetaAddress)...");
-			const result = await typedApi.tx.Revive.call({
-				dest: reviveDest,
-				value: 0n,
-				weight_limit: DEFAULT_WEIGHT_LIMIT,
-				storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
-				data: Binary.fromHex(data),
-			}).signAndSubmit(snapshot.session.txSigner);
+			const result = await submitPapiTx(
+				typedApi.tx.Revive.call({
+					dest: reviveDest,
+					value: 0n,
+					weight_limit: DEFAULT_WEIGHT_LIMIT,
+					storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
+					data: Binary.fromHex(data),
+				}),
+				snapshot.session.txSigner,
+				"setMetaAddress",
+			);
 
 			if (!result.ok) {
 				throw new Error(formatDispatchError(result.dispatchError));
@@ -260,6 +287,31 @@ export default function RegisterPage() {
 			setStatus(null);
 		} finally {
 			setSubmitting(false);
+		}
+	}
+
+	async function mapSignerForRevive() {
+		if (!snapshot) {
+			setError("Derive keys first so StealthPay knows which wallet to map.");
+			return;
+		}
+
+		setMappingSubmitting(true);
+		setError(null);
+		try {
+			setStatus("Submitting one-time Revive account mapping...");
+			await mapAccountForRevive({
+				originSs58: snapshot.session.originSs58,
+				wsUrl,
+				txSigner: snapshot.session.txSigner,
+			});
+			setStatus("Wallet mapped for Revive. You can now register the meta-address.");
+		} catch (cause) {
+			console.error(cause);
+			setError(cause instanceof Error ? cause.message : String(cause));
+			setStatus(null);
+		} finally {
+			setMappingSubmitting(false);
 		}
 	}
 
@@ -423,14 +475,33 @@ export default function RegisterPage() {
 						Derive Keys
 					</button>
 					<button
+						onClick={mapSignerForRevive}
+						className="btn-secondary"
+						disabled={!snapshot || mappingSubmitting || submitting}
+					>
+						{mappingSubmitting ? "Mapping..." : "Map Wallet for Revive"}
+					</button>
+					<button
 						onClick={registerMetaAddress}
 						className="btn-secondary"
-						disabled={!snapshot || submitting}
+						disabled={!snapshot || submitting || mappingSubmitting}
 						data-testid="register-submit-button"
 					>
 						{submitting ? "Registering..." : "Register Meta-Address"}
 					</button>
 				</div>
+
+				{snapshot ? (
+					<div className="soft-warning">
+						<div className="font-semibold">One-time Revive setup</div>
+						<p className="mt-2">
+							If Register reports that the wallet is not mapped, click{" "}
+							<span className="font-semibold">Map Wallet for Revive</span> first.
+							This is the same <span className="font-mono">Revive.map_account()</span>{" "}
+							onboarding transaction used by the Triangle demo.
+						</p>
+					</div>
+				) : null}
 
 				{status ? (
 					<p className="text-sm text-accent-blue" data-testid="register-status">

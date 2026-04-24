@@ -18,18 +18,57 @@ export type RelayerSubmitResult = {
 };
 
 export function getRelayerUrl() {
-	return import.meta.env.VITE_RELAYER_URL || "http://127.0.0.1:8787";
+	return getUsableRelayerUrl() ?? "not configured";
+}
+
+export function requireRelayerUrl() {
+	const relayerUrl = getUsableRelayerUrl();
+	if (!relayerUrl) {
+		throw new Error(
+			"Public StealthPay relayer is not configured for this hosted app. Set VITE_RELAYER_URL to an HTTPS relayer URL before deploying to Dot.li.",
+		);
+	}
+	return relayerUrl;
+}
+
+function getUsableRelayerUrl() {
+	const configured = import.meta.env.VITE_RELAYER_URL || "";
+	if (configured && (!isLoopbackUrl(configured) || isLocalBrowserHost())) {
+		return configured.replace(/\/+$/, "");
+	}
+
+	if (isLocalBrowserHost()) {
+		return "http://127.0.0.1:8787";
+	}
+
+	return null;
+}
+
+function isLocalBrowserHost() {
+	if (typeof window === "undefined") {
+		return true;
+	}
+	return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function isLoopbackUrl(value: string) {
+	try {
+		const url = new URL(value);
+		return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+	} catch {
+		return false;
+	}
 }
 
 export async function requestRelayerQuote(args: { ethRpcUrl: string; poolAddress: Address }) {
-	const response = await fetch(`${getRelayerUrl()}/quote`, {
+	const response = await fetchRelayer("/quote", {
 		body: JSON.stringify(args),
 		headers: {
 			"content-type": "application/json",
 		},
 		method: "POST",
 	});
-	const payload = await response.json();
+	const payload = await readRelayerJson(response);
 	if (!response.ok) {
 		throw new Error(payload.error || `Relayer quote failed with status ${response.status}`);
 	}
@@ -50,26 +89,16 @@ export async function submitRelayedPrivateWithdraw(args: {
 	expiry: bigint;
 	fee: bigint;
 	notice?: Record<string, unknown>;
-	nullableProofInput?: {
-		context: string;
-		nullifier: string;
-		nullifierHash: string;
-		pathElements: string[];
-		pathIndices: string[];
-		root: string;
-		scope: string;
-		secret: string;
-	} | null;
-	pA?: [string, string];
-	pB?: [[string, string], [string, string]];
-	pC?: [string, string];
+	pA: [string, string];
+	pB: [[string, string], [string, string]];
+	pC: [string, string];
 	poolAddress: Address;
 	quoteId: string;
 	recipient: Address;
 	root: HexString;
 	nullifierHash: HexString;
 }) {
-	const response = await fetch(`${getRelayerUrl()}/submit`, {
+	const response = await fetchRelayer("/submit", {
 		body: JSON.stringify({
 			ethRpcUrl: args.ethRpcUrl,
 			expiry: args.expiry.toString(),
@@ -79,7 +108,6 @@ export async function submitRelayedPrivateWithdraw(args: {
 			pB: args.pB,
 			pC: args.pC,
 			poolAddress: args.poolAddress,
-			proofInput: args.nullableProofInput ?? undefined,
 			quoteId: args.quoteId,
 			recipient: args.recipient,
 			root: args.root,
@@ -89,7 +117,7 @@ export async function submitRelayedPrivateWithdraw(args: {
 		},
 		method: "POST",
 	});
-	const payload = await response.json();
+	const payload = await readRelayerJson(response);
 	if (!response.ok) {
 		throw new Error(payload.error || `Relayer submit failed with status ${response.status}`);
 	}
@@ -100,6 +128,32 @@ export async function submitRelayedPrivateWithdraw(args: {
 		ok: true,
 		transactionHash: payload.transactionHash,
 	} satisfies RelayerSubmitResult;
+}
+
+async function fetchRelayer(path: "/quote" | "/submit", init: RequestInit) {
+	const relayerUrl = requireRelayerUrl();
+	try {
+		return await fetch(`${relayerUrl}${path}`, init);
+	} catch (cause) {
+		throw new Error(
+			`Private relayer is not reachable at ${relayerUrl}. Start the relayer and try again. ${formatRelayerCause(cause)}`,
+		);
+	}
+}
+
+async function readRelayerJson(response: Response) {
+	try {
+		return (await response.json()) as { error?: string } & Record<string, unknown>;
+	} catch (cause) {
+		throw new Error(
+			`Relayer returned a non-JSON response with status ${response.status}. ${formatRelayerCause(cause)}`,
+		);
+	}
+}
+
+function formatRelayerCause(cause: unknown) {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	return message ? `Underlying error: ${message}` : "";
 }
 
 function assertRelayerQuotePayload(payload: unknown): asserts payload is {

@@ -19,10 +19,16 @@ web/zk/ptau/
 # Local wallet exports and generated private gift backups
 /*Gp*.json
 /stealthpay-note-*.json
+/.stealthpay-indexer.json
 
 # Local experiment outputs and downloaded archives
 /deployments.native-pool.json
 /*.tar.gz
+/*.bulletin.car
+/web/*.bulletin.car
+/web/dotli-dist/
+/web/dotli-bootstrap-dist/
+/.claude/
 
 # Local AI/planning docs that are not part of the template history
 /AGENTS.md

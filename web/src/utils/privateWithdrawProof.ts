@@ -67,9 +67,8 @@ export async function generatePrivateWithdrawProof(args: {
 	});
 
 	const requestId = crypto.randomUUID();
-	const baseUrl = new URL(import.meta.env.BASE_URL || "/", window.location.origin);
-	const wasmUrl = new URL("zk/private-withdraw/private-withdraw.wasm", baseUrl).toString();
-	const zkeyUrl = new URL("zk/private-withdraw/private-withdraw.zkey", baseUrl).toString();
+	const wasmUrl = getZkAssetUrl("private-withdraw.wasm");
+	const zkeyUrl = getZkAssetUrl("private-withdraw.zkey");
 
 	const request: WorkerRequest = {
 		context: context.toString(),
@@ -123,4 +122,18 @@ export async function generatePrivateWithdrawProof(args: {
 
 		worker.postMessage(request);
 	});
+}
+
+function getZkAssetUrl(fileName: "private-withdraw.wasm" | "private-withdraw.zkey") {
+	const remoteBase = import.meta.env.VITE_ZK_ASSET_BASE_URL;
+	if (typeof remoteBase === "string" && remoteBase.trim()) {
+		return new URL(fileName, ensureTrailingSlash(remoteBase.trim())).toString();
+	}
+
+	const baseUrl = new URL(import.meta.env.BASE_URL || "/", window.location.origin);
+	return new URL(`zk/private-withdraw/${fileName}`, baseUrl).toString();
+}
+
+function ensureTrailingSlash(value: string) {
+	return value.endsWith("/") ? value : `${value}/`;
 }

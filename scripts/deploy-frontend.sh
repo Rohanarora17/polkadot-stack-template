@@ -13,7 +13,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Domain to deploy to — flag > env var > default
-DOMAIN="${DOMAIN:-polkadot-stack-template00.dot}"
+DOMAIN="${DOMAIN:-stealthpaygift24.dot}"
 
 echo "=== Deploy Frontend to Bulletin Chain ==="
 echo "  Domain: $DOMAIN"
@@ -21,19 +21,6 @@ echo "  URL:    https://$DOMAIN.li"
 echo ""
 
 # Check prerequisites
-if ! command -v bulletin-deploy &>/dev/null; then
-    echo "ERROR: bulletin-deploy not installed."
-    echo "Run: npm install -g bulletin-deploy"
-    exit 1
-fi
-
-if ! command -v ipfs &>/dev/null; then
-    echo "ERROR: IPFS Kubo not installed (required by bulletin-deploy)."
-    echo "macOS: brew install ipfs && ipfs init"
-    echo "Linux: see https://docs.ipfs.tech/install/command-line/"
-    exit 1
-fi
-
 # Read MNEMONIC from hardhat vars if not set in environment (Linux/macOS).
 HARDHAT_VARS_FILE="${HARDHAT_VARS_FILE:-}"
 if [ -z "${HARDHAT_VARS_FILE:-}" ]; then
@@ -51,13 +38,17 @@ echo "[1/2] Building frontend..."
 cd "$ROOT_DIR/web"
 npm install --silent
 npm run build
+if [ -n "${VITE_ZK_ASSET_BASE_URL:-}" ]; then
+    echo "  Using remote ZK assets: $VITE_ZK_ASSET_BASE_URL"
+    rm -rf "$ROOT_DIR/web/dist/zk"
+fi
 echo "  Build output: web/dist/"
 echo ""
 
 # Deploy to Bulletin Chain
 echo "[2/2] Deploying to Bulletin Chain..."
 if [ -n "${MNEMONIC:-}" ]; then
-    MNEMONIC="$MNEMONIC" bulletin-deploy "$ROOT_DIR/web/dist" "$DOMAIN"
+    NODE_OPTIONS=--max-old-space-size=8192 MNEMONIC="$MNEMONIC" npx -y bulletin-deploy@latest --js-merkle "$ROOT_DIR/web/dist" "$DOMAIN"
 else
-    bulletin-deploy "$ROOT_DIR/web/dist" "$DOMAIN"
+    NODE_OPTIONS=--max-old-space-size=8192 npx -y bulletin-deploy@latest --js-merkle "$ROOT_DIR/web/dist" "$DOMAIN"
 fi

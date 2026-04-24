@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { getClient, disconnectClient } from "./useChain";
 import { useChainStore } from "../store/chainStore";
+import { isPolkadotHostEnvironment } from "../utils/hostEnvironment";
 
 let stackTemplateDescriptorPromise: Promise<
 	(typeof import("@polkadot-api/descriptors"))["stack_template"]
@@ -90,15 +91,28 @@ export function useConnectionManagement() {
 	const initialWsUrlRef = useRef(wsUrl);
 
 	useEffect(() => {
+		if (isPolkadotHostEnvironment()) {
+			setBlockNumber(0);
+			useChainStore.setState({
+				connected: true,
+				pallets: { templatePallet: false, revive: true },
+			});
+			return;
+		}
+
 		connect(initialWsUrlRef.current).catch(() => {});
 
 		return () => {
 			connectId += 1;
 			disconnectClient();
 		};
-	}, [connect]);
+	}, [connect, setBlockNumber]);
 
 	useEffect(() => {
+		if (isPolkadotHostEnvironment()) {
+			return;
+		}
+
 		if (!connected) {
 			return;
 		}

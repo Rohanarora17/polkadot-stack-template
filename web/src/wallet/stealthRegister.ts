@@ -1,20 +1,27 @@
 import { enumValue } from "@novasamatech/host-api";
 import {
+	createAccountsProvider,
 	hostApi,
-	injectSpektrExtension,
 	sandboxTransport,
 	SpektrExtensionName,
+	type ProductAccount,
 } from "@novasamatech/product-sdk";
 import {
 	connectInjectedExtension,
 	getInjectedExtensions,
 	type InjectedPolkadotAccount,
 } from "polkadot-api/pjs-signer";
-import type { PolkadotSigner } from "polkadot-api";
+import { AccountId, type PolkadotSigner } from "polkadot-api";
 
 import { getPublicClient } from "../config/evm";
-import { getKnownChainIdForEthRpcUrl, getStoredEthRpcUrl } from "../config/network";
+import {
+	getKnownChainIdForEthRpcUrl,
+	getStoredEthRpcUrl,
+	TESTNET_CHAIN_ID,
+	TESTNET_SS58_PREFIX,
+} from "../config/network";
 import { devAccounts } from "../hooks/useAccount";
+import { isPolkadotHostEnvironment } from "../utils/hostEnvironment";
 
 type CodecErrorLike = {
 	tag?: string;
@@ -93,21 +100,11 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 	}
 }
 
-async function waitForSpektrExtension() {
-	for (let attempt = 0; attempt < 10; attempt += 1) {
-		if (await injectSpektrExtension(sandboxTransport)) {
-			return;
-		}
-
-		if (attempt < 9) {
-			await new Promise((resolve) => window.setTimeout(resolve, 500));
-		}
+async function getStealthChainId() {
+	if (isPolkadotHostEnvironment()) {
+		return TESTNET_CHAIN_ID;
 	}
 
-	throw new Error("Spektr host wallet injection did not become available.");
-}
-
-async function getStealthChainId() {
 	const ethRpcUrl = getStoredEthRpcUrl();
 	const knownChainId = getKnownChainIdForEthRpcUrl(ethRpcUrl);
 	if (knownChainId !== null) {
@@ -148,25 +145,28 @@ export async function createPwalletTxSession(): Promise<TransactionWalletSession
 	if (!shouldBypassHostPermissionsForE2E()) {
 		await withTimeout(requestHostSigningPermission(), 5_000, "Host signing permission request");
 	}
-	await withTimeout(waitForSpektrExtension(), 8_000, "Spektr extension injection");
 
-	const extension = await withTimeout(
-		connectInjectedExtension(SpektrExtensionName),
+	const accountsProvider = createAccountsProvider(sandboxTransport);
+	const account = await withTimeout(
+		accountsProvider.getNonProductAccounts().match(
+			(accounts) => accounts[0] ?? null,
+			() => null,
+		),
 		8_000,
-		"Spektr extension connection",
+		"Host account lookup",
 	);
-	const account = extension.getAccounts()[0];
 	if (!account) {
 		throw new Error("Pwallet is connected, but no host wallet account is available.");
 	}
+	const codec = AccountId(TESTNET_SS58_PREFIX);
 
 	return {
 		accountName: account.name ?? null,
 		chainId,
-		originSs58: account.address,
+		originSs58: codec.dec(account.publicKey),
 		providerKind: "pwallet-host",
 		providerLabel: "Pwallet / Host API",
-		txSigner: account.polkadotSigner,
+		txSigner: accountsProvider.getNonProductAccountSigner(account as unknown as ProductAccount),
 	};
 }
 

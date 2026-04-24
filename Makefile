@@ -18,6 +18,12 @@ endif
 export PRIVATE_KEY
 export MNEMONIC
 
+# ─── AI harness ───────────────────────────────────────────────────────────────
+
+.PHONY: ai-harness
+ai-harness:
+	@./scripts/ai-harness.sh
+
 # ─── Paseo deploy ─────────────────────────────────────────────────────────────
 
 .PHONY: deploy-paseo
@@ -39,23 +45,27 @@ deploy-paseo-pvm:
 # ─── Frontend deploy ──────────────────────────────────────────────────────────
 
 # Domain to deploy to — override with: make deploy-frontend DOMAIN=my-app.dot
-DOMAIN ?= polkadot-stack-template00.dot
+DOMAIN ?= stealthpaygift24.dot
 
 .PHONY: deploy-frontend
-deploy-frontend: build-frontend check-bulletin-deploy check-ipfs
+deploy-frontend: build-frontend
 	@echo "Deploying frontend to Bulletin Chain..."
 	@echo "  Domain:  $(DOMAIN)"
 	@echo "  URL:     https://$(DOMAIN).li"
 	@if [ -n "$(MNEMONIC)" ]; then \
-		MNEMONIC="$(MNEMONIC)" bulletin-deploy $(ROOT_DIR)/web/dist $(DOMAIN); \
+		NODE_OPTIONS=--max-old-space-size=8192 MNEMONIC="$(MNEMONIC)" npx -y bulletin-deploy@latest --js-merkle $(ROOT_DIR)/web/dist $(DOMAIN); \
 	else \
-		bulletin-deploy $(ROOT_DIR)/web/dist $(DOMAIN); \
+		NODE_OPTIONS=--max-old-space-size=8192 npx -y bulletin-deploy@latest --js-merkle $(ROOT_DIR)/web/dist $(DOMAIN); \
 	fi
 
 .PHONY: build-frontend
 build-frontend:
 	@echo "Building frontend..."
 	@cd $(ROOT_DIR)/web && npm install --silent && npm run build
+	@if [ -n "$$VITE_ZK_ASSET_BASE_URL" ]; then \
+		echo "  Using remote ZK assets: $$VITE_ZK_ASSET_BASE_URL"; \
+		rm -rf $(ROOT_DIR)/web/dist/zk; \
+	fi
 	@echo "  Build output: web/dist/"
 
 .PHONY: check-bulletin-deploy

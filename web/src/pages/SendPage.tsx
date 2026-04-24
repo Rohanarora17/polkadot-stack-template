@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { stack_template } from "@polkadot-api/descriptors";
 import { Binary } from "polkadot-api";
 import type { InjectedPolkadotAccount } from "polkadot-api/pjs-signer";
 import { type Address, encodeFunctionData } from "viem";
 
+import { GiftQrCard } from "../components/GiftQrCard";
 import { deployments } from "../config/deployments";
 import {
 	evmDevAccounts,
@@ -37,7 +37,7 @@ import {
 	type HexString,
 	type StealthPayment,
 } from "../crypto/stealth";
-import { checkBulletinAuthorization, uploadToBulletin } from "../hooks/useBulletin";
+import { publishEncryptedPayloadToBulletin } from "../hooks/useBulletin";
 import { useChainStore } from "../store/chainStore";
 import {
 	DEFAULT_STORAGE_DEPOSIT_LIMIT,
@@ -45,6 +45,8 @@ import {
 	UNIT_PLANCK,
 	contractValueToReviveCallValue,
 	ensureMappedForRevive,
+	getStealthTypedApi,
+	mapAccountForRevive,
 	resolveReviveAddress,
 	toReviveDest,
 } from "../utils/stealthRevive";
@@ -58,11 +60,13 @@ import {
 	type TransactionWalletSession,
 } from "../wallet/stealthRegister";
 import { devAccounts } from "../hooks/useAccount";
-import { getClient } from "../hooks/useChain";
 import { buildGiftLink } from "../utils/claimLinks";
 import { formatDispatchError } from "../utils/format";
 import { resolveRecipientOwner, type ResolvedRecipient } from "../utils/recipientResolver";
+import { submitPapiTx } from "../utils/submitPapiTx";
 import { recordPrivateGiftCreated } from "../utils/walletActivity";
+import { readWalletPreference, writeWalletPreference } from "../utils/walletPreference";
+import { isPolkadotHostEnvironment } from "../utils/hostEnvironment";
 
 const SEND_STORAGE_KEY_PREFIX = "stealthpay-private-send-address";
 const POOL_STORAGE_KEY_PREFIX = "stealthpay-private-pool-address";
@@ -210,13 +214,15 @@ export default function SendPage() {
 	const ethRpcUrl = useChainStore((s) => s.ethRpcUrl);
 	const wsUrl = useChainStore((s) => s.wsUrl);
 
-	const [walletMode, setWalletMode] = useState<TransactionWalletMode>("browser-extension");
+	const [walletMode, setWalletMode] = useState<TransactionWalletMode>(() =>
+		isPolkadotHostEnvironment() ? "pwallet-host" : "browser-extension",
+	);
 	const [devAccountIndex, setDevAccountIndex] = useState(0);
 	const [availableExtensionWallets, setAvailableExtensionWallets] = useState<string[]>([]);
 	const [selectedExtensionWallet, setSelectedExtensionWallet] = useState("");
 	const [extensionAccounts, setExtensionAccounts] = useState<InjectedPolkadotAccount[]>([]);
 	const [selectedExtensionAccount, setSelectedExtensionAccount] = useState("");
-	const [depositTxMode, setDepositTxMode] = useState<DepositTxMode>("evm-injected");
+	const [depositTxMode, setDepositTxMode] = useState<DepositTxMode>("substrate-revive");
 	const [giftMode, setGiftMode] = useState<GiftMode>("registered");
 	const [evmDevAccountIndex, setEvmDevAccountIndex] = useState(0);
 	const [evmInjectedAccount, setEvmInjectedAccount] = useState<Address | "">("");
@@ -235,9 +241,12 @@ export default function SendPage() {
 	const [error, setError] = useState<string | null>(null);
 	const [preflightNote, setPreflightNote] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
+	const [mappingSubmitting, setMappingSubmitting] = useState(false);
 	const [diagnosticsRunning, setDiagnosticsRunning] = useState(false);
 	const [diagnosticsNote, setDiagnosticsNote] = useState<string | null>(null);
 	const [claimLinkCopied, setClaimLinkCopied] = useState(false);
+	const [qrPresentationOpen, setQrPresentationOpen] = useState(false);
+	const hostedByDotLi = isPolkadotHostEnvironment();
 
 	const contractStorageKey = useMemo(
 		() => scopedStorageKey(SEND_STORAGE_KEY_PREFIX, ethRpcUrl),
@@ -293,9 +302,14 @@ export default function SendPage() {
 
 	useEffect(() => {
 		const wallets = listBrowserExtensions();
+		const preferred = readWalletPreference();
 		setAvailableExtensionWallets(wallets);
 		setSelectedExtensionWallet((current) =>
-			current && wallets.includes(current) ? current : (wallets[0] ?? ""),
+			current && wallets.includes(current)
+				? current
+				: preferred?.walletName && wallets.includes(preferred.walletName)
+					? preferred.walletName
+					: (wallets[0] ?? ""),
 		);
 	}, []);
 
@@ -314,10 +328,14 @@ export default function SendPage() {
 					return;
 				}
 				setExtensionAccounts(accounts);
+				const preferred = readWalletPreference();
 				setSelectedExtensionAccount((current) =>
 					current && accounts.some((account) => account.address === current)
 						? current
-						: (accounts[0]?.address ?? ""),
+						: preferred?.walletName === selectedExtensionWallet &&
+							  accounts.some((account) => account.address === preferred.accountAddress)
+							? preferred.accountAddress
+							: (accounts[0]?.address ?? ""),
 				);
 			} catch (cause) {
 				console.error(cause);
@@ -332,6 +350,16 @@ export default function SendPage() {
 			cancelled = true;
 		};
 	}, [walletMode, selectedExtensionWallet]);
+
+	useEffect(() => {
+		if (walletMode !== "browser-extension" || !selectedExtensionWallet) {
+			return;
+		}
+		const account =
+			extensionAccounts.find((candidate) => candidate.address === selectedExtensionAccount) ??
+			null;
+		writeWalletPreference({ account, walletName: selectedExtensionWallet });
+	}, [extensionAccounts, selectedExtensionAccount, selectedExtensionWallet, walletMode]);
 
 	function saveAddress(storageKey: string, setter: (value: string) => void, value: string) {
 		setter(value);
@@ -357,6 +385,7 @@ export default function SendPage() {
 		setError(null);
 		setReadback(null);
 		setClaimLinkCopied(false);
+		setQrPresentationOpen(false);
 		setRecipientSnapshot(null);
 		setUnregisteredRecipientFallback(null);
 		setPreparedSend(null);
@@ -506,6 +535,12 @@ export default function SendPage() {
 	}
 
 	async function runSubstrateReviveDiagnostics() {
+		if (hostedByDotLi) {
+			setError(
+				"Hosted Dot.li mode disables Revive diagnostics because P-wallet host signing can hang on these advanced transactions. Use localhost or a browser extension for diagnostics.",
+			);
+			return;
+		}
 		if (!session) {
 			setError("Connect the Substrate sender wallet before running Revive diagnostics.");
 			return;
@@ -526,10 +561,11 @@ export default function SendPage() {
 
 		try {
 			const publicClient = getPublicClient(ethRpcUrl);
-			const typedApi = getClient(wsUrl).getTypedApi(stack_template);
+			const typedApi = getStealthTypedApi(wsUrl);
 			setStatus("Running Substrate Revive diagnostics...");
 
 			await ensureMappedForRevive({
+				originSs58: session.originSs58,
 				txSigner: session.txSigner,
 				wsUrl,
 			});
@@ -639,6 +675,12 @@ export default function SendPage() {
 	}
 
 	async function runNativePoolLiveDepositProbe() {
+		if (hostedByDotLi) {
+			setError(
+				"Hosted Dot.li mode disables live Revive probes because they submit real host-signed transactions and can hang in P-wallet.",
+			);
+			return;
+		}
 		if (!session) {
 			setError("Connect the Substrate sender wallet before running the native pool probe.");
 			return;
@@ -655,10 +697,11 @@ export default function SendPage() {
 				EXPERIMENTAL_NATIVE_POOL_DENOMINATION,
 				chainId,
 			);
-			const typedApi = getClient(wsUrl).getTypedApi(stack_template);
+			const typedApi = getStealthTypedApi(wsUrl);
 			setStatus("Submitting live Revive.call deposit to the experimental native pool...");
 
 			await ensureMappedForRevive({
+				originSs58: session.originSs58,
 				txSigner: session.txSigner,
 				wsUrl,
 			});
@@ -682,13 +725,17 @@ export default function SendPage() {
 				typeof typedApi.tx.Revive.call
 			>[0]["dest"];
 
-			const result = await typedApi.tx.Revive.call({
-				dest: nativePoolDest,
-				value: revivedNativePoolValue,
-				weight_limit: DEFAULT_WEIGHT_LIMIT,
-				storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
-				data: Binary.fromHex(data),
-			}).signAndSubmit(session.txSigner);
+			const result = await submitPapiTx(
+				typedApi.tx.Revive.call({
+					dest: nativePoolDest,
+					value: revivedNativePoolValue,
+					weight_limit: DEFAULT_WEIGHT_LIMIT,
+					storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
+					data: Binary.fromHex(data),
+				}),
+				session.txSigner,
+				"experimental native pool deposit",
+			);
 
 			if (!result.ok) {
 				throw new Error(formatDispatchError(result.dispatchError));
@@ -735,6 +782,12 @@ export default function SendPage() {
 	}
 
 	async function runMsgValueLiveProbe() {
+		if (hostedByDotLi) {
+			setError(
+				"Hosted Dot.li mode disables live Revive probes because they submit real host-signed transactions and can hang in P-wallet.",
+			);
+			return;
+		}
 		if (!session) {
 			setError("Connect the Substrate sender wallet before running the msg.value probe.");
 			return;
@@ -751,10 +804,11 @@ export default function SendPage() {
 				PRIVATE_POOL_DENOMINATION,
 				chainId,
 			);
-			const typedApi = getClient(wsUrl).getTypedApi(stack_template);
+			const typedApi = getStealthTypedApi(wsUrl);
 			setStatus("Submitting live Revive.call to record contract msg.value...");
 
 			await ensureMappedForRevive({
+				originSs58: session.originSs58,
 				txSigner: session.txSigner,
 				wsUrl,
 			});
@@ -779,13 +833,17 @@ export default function SendPage() {
 				typeof typedApi.tx.Revive.call
 			>[0]["dest"];
 
-			const result = await typedApi.tx.Revive.call({
-				dest: probeDest,
-				value: reviveCallValue,
-				weight_limit: DEFAULT_WEIGHT_LIMIT,
-				storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
-				data: Binary.fromHex(data),
-			}).signAndSubmit(session.txSigner);
+			const result = await submitPapiTx(
+				typedApi.tx.Revive.call({
+					dest: probeDest,
+					value: reviveCallValue,
+					weight_limit: DEFAULT_WEIGHT_LIMIT,
+					storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
+					data: Binary.fromHex(data),
+				}),
+				session.txSigner,
+				"msg.value probe",
+			);
 
 			if (!result.ok) {
 				throw new Error(formatDispatchError(result.dispatchError));
@@ -856,6 +914,7 @@ export default function SendPage() {
 		setError(null);
 		setReadback(null);
 		setClaimLinkCopied(false);
+		setQrPresentationOpen(false);
 
 		try {
 			const publicClient = getPublicClient(ethRpcUrl);
@@ -870,21 +929,14 @@ export default function SendPage() {
 				throw new Error(`No private pool contract code found at ${poolAddress}.`);
 			}
 
-			setStatus("Checking Bulletin authorization for the encrypted private note...");
-			const bulletinAuthorized = await checkBulletinAuthorization(
-				session.originSs58,
-				preparedSend.bulletinPayloadBytes.length,
-			);
-			if (!bulletinAuthorized) {
-				throw new Error(
-					`Bulletin authorization is missing for ${session.originSs58}. Authorize this Substrate account before sending a private deposit with note delivery.`,
-				);
-			}
-
-			setStatus("Uploading the encrypted note delivery payload to Bulletin...");
-			const bulletinBlob = await uploadToBulletin(
+			setStatus("Publishing the encrypted gift payload to Bulletin...");
+			const bulletinBlob = await publishEncryptedPayloadToBulletin(
 				preparedSend.bulletinPayloadBytes,
-				session.txSigner,
+				{
+					onStatus: setStatus,
+					originAddress: session.originSs58,
+					signer: session.txSigner,
+				},
 			);
 
 			const [announcementCountBefore] = await Promise.all([
@@ -897,6 +949,7 @@ export default function SendPage() {
 
 			setStatus("Ensuring the sender account is mapped for Revive...");
 			await ensureMappedForRevive({
+				originSs58: session.originSs58,
 				txSigner: session.txSigner,
 				wsUrl,
 			});
@@ -905,7 +958,7 @@ export default function SendPage() {
 			let depositTransactionHash: HexString | null = null;
 
 			if (depositTxMode === "substrate-revive") {
-				const typedApi = getClient(wsUrl).getTypedApi(stack_template);
+				const typedApi = getStealthTypedApi(wsUrl);
 				const chainId = await publicClient.getChainId();
 				const reviveCallValue = contractValueToReviveCallValue(
 					PRIVATE_POOL_DENOMINATION,
@@ -929,13 +982,17 @@ export default function SendPage() {
 				setStatus(
 					`Submitting announcePrivateDeposit over Substrate Revive.call with scaled value ${reviveCallValue.toString()}...`,
 				);
-				const result = await typedApi.tx.Revive.call({
-					dest: reviveDest,
-					value: reviveCallValue,
-					weight_limit: DEFAULT_WEIGHT_LIMIT,
-					storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
-					data: Binary.fromHex(data),
-				}).signAndSubmit(session.txSigner);
+				const result = await submitPapiTx(
+					typedApi.tx.Revive.call({
+						dest: reviveDest,
+						value: reviveCallValue,
+						weight_limit: DEFAULT_WEIGHT_LIMIT,
+						storage_deposit_limit: DEFAULT_STORAGE_DEPOSIT_LIMIT,
+						data: Binary.fromHex(data),
+					}),
+					session.txSigner,
+					"announcePrivateDeposit",
+				);
 				if (!result.ok) {
 					throw new Error(formatDispatchError(result.dispatchError));
 				}
@@ -1036,6 +1093,7 @@ export default function SendPage() {
 				senderOwner,
 			});
 			recordPrivateGiftCreated({
+				bearerGiftKey: preparedSend.bearerGiftKey,
 				commitment: preparedSend.note.commitment,
 				createdAt: Date.now(),
 				giftMode: preparedSend.giftMode,
@@ -1046,13 +1104,15 @@ export default function SendPage() {
 					preparedSend.giftMode === "bearer"
 						? "Walletless gift link"
 						: (preparedSend.recipientOwner ?? "Registered recipient"),
+				recipientOwner: preparedSend.recipientOwner,
+				registryAddress: contractAddress,
 				status: "created",
 				transactionHash: depositTransactionHash,
 			});
 			setStatus(
 				preparedSend.giftMode === "bearer"
-					? "Walletless private gift created. Share the link carefully: it is the claim capability until redeemed."
-					: "Private deposit announced successfully. The recipient can now prepare a private withdrawal from the pool.",
+					? "Walletless private gift created. Share the link or QR carefully: either one is the claim capability until redeemed."
+					: "Private gift created. Share the link or QR so the recipient can claim privately.",
 			);
 		} catch (cause) {
 			console.error(cause);
@@ -1070,6 +1130,31 @@ export default function SendPage() {
 		}
 	}
 
+	async function mapSenderForRevive() {
+		if (!session) {
+			setError("Prepare the gift first so StealthPay knows which sender wallet to map.");
+			return;
+		}
+
+		setMappingSubmitting(true);
+		setError(null);
+		try {
+			setStatus("Submitting one-time Revive account mapping...");
+			await mapAccountForRevive({
+				originSs58: session.originSs58,
+				wsUrl,
+				txSigner: session.txSigner,
+			});
+			setStatus("Sender wallet mapped for Revive. You can now create the private gift.");
+		} catch (cause) {
+			console.error(cause);
+			setError(cause instanceof Error ? cause.message : String(cause));
+			setStatus(null);
+		} finally {
+			setMappingSubmitting(false);
+		}
+	}
+
 	async function copyClaimLink() {
 		if (!claimLink) {
 			return;
@@ -1078,7 +1163,7 @@ export default function SendPage() {
 		await navigator.clipboard.writeText(claimLink);
 		setClaimLinkCopied(true);
 		setStatus(
-			"Claim link copied. Share it with the recipient so they can open the private claim flow directly.",
+			"Claim link copied. Share it with the recipient so they can open the private claim flow directly. The QR encodes the same URL.",
 		);
 	}
 
@@ -1109,12 +1194,12 @@ export default function SendPage() {
 						</span>
 						<h1 className="page-title">Send a Private Gift</h1>
 						<p className="text-sm text-text-secondary">
-							Create a private gift worth exactly <strong>1 UNIT</strong>. The app
-							deposits it into the privacy pool and gives you a shareable claim link
-							instead of exposing a direct payment trail to the recipient.
+							Create a private gift worth exactly <strong>1 UNIT</strong>. Share it as
+							a private link or QR so the recipient can claim without a direct public
+							payment trail.
 						</p>
 					</div>
-					<div className="rounded-2xl border border-white/10 bg-black/10 px-4 py-4 min-w-[220px]">
+					<div className="paper-surface min-w-[220px] px-4 py-4">
 						<div className="text-xs uppercase tracking-[0.18em] text-text-muted">
 							Gift size
 						</div>
@@ -1124,13 +1209,13 @@ export default function SendPage() {
 						</p>
 						<p className="mt-3 text-sm text-text-secondary">
 							{readback
-								? "Share the claim link so the recipient can open the gift directly."
+								? "Share the private link or QR so the recipient can open the gift directly."
 								: "The recipient will later claim through the relayer rather than receiving a direct public transfer."}
 						</p>
 					</div>
 				</div>
 
-				<div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+				<div className="paper-surface space-y-3">
 					<div className="text-sm font-medium text-text-primary">Gift type</div>
 					<div className="grid gap-3 md:grid-cols-2">
 						<button
@@ -1194,11 +1279,11 @@ export default function SendPage() {
 							3. Share
 						</div>
 						<div className="mt-2 text-sm font-medium text-text-primary">
-							Send the claim link
+							Send the link or QR
 						</div>
 						<p className="mt-2 text-sm text-text-secondary">
-							Once created, share the claim link so the recipient can open the gift
-							directly in the app.
+							Once created, share the private link or QR so the recipient can open the
+							gift directly in the app.
 						</p>
 					</div>
 				</div>
@@ -1224,7 +1309,7 @@ export default function SendPage() {
 							placeholder="Recipient wallet, extension account, or name"
 						/>
 						{extensionAccounts.length > 0 ? (
-							<div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+							<div className="paper-surface">
 								<div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
 									Detected wallet accounts
 								</div>
@@ -1249,17 +1334,15 @@ export default function SendPage() {
 							</div>
 						) : null}
 						{resolvedRecipient ? (
-							<div className="rounded-xl border border-accent-green/20 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">
+							<div className="soft-success">
 								Resolved {resolvedRecipient.label} recipient to{" "}
 								<span className="font-mono">{resolvedRecipient.owner}</span>.
 							</div>
 						) : null}
 					</div>
 				) : (
-					<div className="rounded-xl border border-accent-yellow/20 bg-accent-yellow/10 px-4 py-4 text-sm text-text-secondary">
-						<div className="font-semibold text-accent-yellow">
-							Walletless bearer gift
-						</div>
+					<div className="soft-warning">
+						<div className="font-semibold">Walletless bearer gift</div>
 						<p className="mt-2">
 							No recipient wallet is required before sending. The final gift link is
 							sensitive: anyone who gets it can claim until it is redeemed.
@@ -1283,23 +1366,22 @@ export default function SendPage() {
 			</div>
 
 			<div className="card space-y-4">
-				<h2 className="section-title">Gift Sender</h2>
+				<h2 className="section-title">Funding Source</h2>
 				<p className="text-sm text-text-secondary">
-					This wallet signs the encrypted private delivery. The actual pool deposit can
-					use a separate transport underneath, but you should not need to think about that
-					in the happy path.
+					Choose the wallet with funds for this private gift. In the normal flow this
+					is simply your connected wallet; advanced transport options stay hidden.
 				</p>
 
-				<div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 space-y-3">
+				<div className="paper-surface space-y-3 px-4 py-4">
 					<div className="flex items-center justify-between gap-3">
 						<div>
 							<div className="text-sm font-medium text-text-primary">
-								Recommended: Browser Extension
+								Recommended: connected wallet with funds
 							</div>
 							<p className="mt-1 text-sm text-text-secondary">
-								Use the wallet extension that should sign the private delivery.
-								Alternative sender modes and transport options stay under advanced
-								settings.
+								Use the wallet already connected to your StealthPay account. Social
+								wallet recipients can transfer funds out from Wallet, while funded
+								extension wallets are the safest send path for this demo.
 							</p>
 						</div>
 						{walletMode !== "browser-extension" ? (
@@ -1308,9 +1390,9 @@ export default function SendPage() {
 							</span>
 						) : null}
 					</div>
-					<details className="rounded-xl border border-white/10 bg-black/10 p-4">
+					<details className="paper-surface">
 						<summary className="cursor-pointer list-none text-sm font-semibold text-text-secondary">
-							Use a different sender wallet
+							Change funding source
 						</summary>
 						<div className="mt-4 flex flex-wrap gap-2">
 							{[
@@ -1400,14 +1482,35 @@ export default function SendPage() {
 					<button
 						type="button"
 						className="btn-secondary"
-						disabled={!preparedSend || submitting}
+						disabled={!preparedSend || mappingSubmitting || submitting}
+						onClick={mapSenderForRevive}
+					>
+						{mappingSubmitting ? "Mapping..." : "Map Wallet for Revive"}
+					</button>
+					<button
+						type="button"
+						className="btn-secondary"
+						disabled={!preparedSend || submitting || mappingSubmitting}
 						onClick={submitPrivateSend}
 					>
 						{submitting ? "Creating Gift..." : "Create Private Gift"}
 					</button>
 				</div>
 
-				<details className="rounded-xl border border-white/10 bg-white/5 p-4">
+				{preparedSend ? (
+					<div className="soft-warning">
+						<div className="font-semibold">One-time Revive setup</div>
+						<p className="mt-2">
+							If Create Gift reports that the wallet is not mapped, click{" "}
+							<span className="font-semibold">Map Wallet for Revive</span> first.
+							This submits <span className="font-mono">Revive.map_account()</span>,
+							the same onboarding step used by the Triangle demo before contract
+							writes.
+						</p>
+					</div>
+				) : null}
+
+				<details className="paper-surface">
 					<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 						Advanced Send Settings
 					</summary>
@@ -1450,17 +1553,16 @@ export default function SendPage() {
 								How the gift is sent
 							</h3>
 							<p className="text-sm text-text-secondary">
-								The injected EVM wallet route is still the primary sender path. The
-								Substrate `Revive.call` route now applies the live Paseo msg.value
-								scale discovered by the probe, so it is available for retesting
-								against the deployed pool.
+						The default funding path is Substrate `Revive.call`, which creates the
+						pool deposit from a connected wallet. EVM routes are kept here as
+						advanced debugging fallbacks.
 							</p>
 						</div>
 
 						<div className="flex flex-wrap gap-2">
 							{[
-								["evm-injected", "Injected EVM Wallet"],
 								["substrate-revive", "Substrate Revive.call"],
+								["evm-injected", "Injected EVM Wallet"],
 								["evm-dev", "Local EVM Dev Signer"],
 							].map(([value, label]) => (
 								<button
@@ -1494,13 +1596,13 @@ export default function SendPage() {
 						)}
 
 						{depositTxMode === "substrate-revive" && (
-							<div className="rounded-xl border border-accent-yellow/25 bg-accent-yellow/10 p-4 text-sm text-accent-yellow">
+							<div className="soft-warning">
 								This route submits with the scaled Paseo `Revive.call` value. Use
 								diagnostics first if the transaction reverts.
 							</div>
 						)}
 
-						<div className="rounded-xl border border-white/10 bg-black/10 p-4 space-y-3">
+						<div className="paper-surface space-y-3">
 							<div>
 								<h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 									Substrate Revive Diagnostics
@@ -1548,7 +1650,7 @@ export default function SendPage() {
 								simple payable contract actually receives.
 							</p>
 							{diagnosticsNote ? (
-								<pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-black/30 p-3 text-xs text-text-secondary">
+								<pre className="overflow-auto whitespace-pre-wrap rounded-lg border border-ink-950/10 bg-ivory-100 p-3 text-xs text-text-secondary">
 									{diagnosticsNote}
 								</pre>
 							) : null}
@@ -1576,19 +1678,15 @@ export default function SendPage() {
 				</details>
 
 				{preflightNote ? (
-					<div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-text-secondary">
+					<div className="paper-surface px-4 py-3 text-sm text-text-secondary">
 						{preflightNote}
 					</div>
 				) : null}
 
-				{status ? (
-					<div className="rounded-xl border border-accent-blue/25 bg-accent-blue/10 px-4 py-3 text-sm text-accent-blue">
-						{status}
-					</div>
-				) : null}
+				{status ? <div className="soft-info">{status}</div> : null}
 				{unregisteredRecipientFallback ? (
-					<div className="rounded-xl border border-accent-yellow/25 bg-accent-yellow/10 px-4 py-4 text-sm text-text-secondary">
-						<div className="font-semibold text-accent-yellow">
+					<div className="soft-warning">
+						<div className="font-semibold">
 							Recipient found, but private wallet is not set up yet
 						</div>
 						<p className="mt-2">
@@ -1617,11 +1715,7 @@ export default function SendPage() {
 						</div>
 					</div>
 				) : null}
-				{error ? (
-					<div className="rounded-xl border border-accent-red/25 bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-						{error}
-					</div>
-				) : null}
+				{error ? <div className="soft-danger">{error}</div> : null}
 			</div>
 
 			{session ? (
@@ -1670,7 +1764,7 @@ export default function SendPage() {
 							value={`${preparedSend.bulletinPayloadBytes.length} bytes`}
 						/>
 					</div>
-					<details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+					<details className="paper-surface">
 						<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 							Advanced gift details
 						</summary>
@@ -1703,24 +1797,22 @@ export default function SendPage() {
 					<div className="flex flex-wrap items-start justify-between gap-4">
 						<div className="space-y-2">
 							<span className="gift-chip">Gift created</span>
-							<h2 className="page-title text-2xl">
-								Your private gift is ready to share
-							</h2>
+							<h2 className="page-title text-2xl">Your private gift is sealed</h2>
 							<p className="text-sm text-text-secondary max-w-3xl">
-								The gift is now in the privacy pool and the recipient can claim it
-								privately through the relayer.
+								The gift is in the privacy pool. Share the private link or QR; the
+								recipient opens it like a gift and claims through the relayer.
 							</p>
 						</div>
-						<div className="rounded-2xl border border-accent-green/20 bg-accent-green/10 px-4 py-4 min-w-[220px]">
-							<div className="text-xs uppercase tracking-[0.18em] text-accent-green">
+						<div className="paper-surface min-w-[220px] px-4 py-4">
+							<div className="text-xs uppercase tracking-[0.18em] text-emerald-700">
 								Next step
 							</div>
 							<div className="mt-2 text-lg font-semibold text-text-primary">
-								Share the claim link
+								Share link or QR
 							</div>
 							<p className="mt-2 text-sm text-text-secondary">
-								Once the recipient opens it, the app can take them straight into the
-								guided private claim flow.
+								Both carry the same claim URL. For walletless gifts, treat either
+								one like cash until redeemed.
 							</p>
 						</div>
 					</div>
@@ -1754,18 +1846,18 @@ export default function SendPage() {
 						<div className="gift-share-card space-y-4">
 							<div className="flex flex-wrap items-start justify-between gap-4">
 								<div className="space-y-2 max-w-2xl">
-									<h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-polka-200">
-										Claim Link
+									<h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-emerald-700">
+										Private link and QR
 									</h3>
-									<p className="text-sm text-polka-100">
+									<p className="text-sm text-text-secondary">
 										{readback.giftMode === "bearer"
-											? "Share this link carefully. It is the private claim capability until the gift is redeemed."
-											: "Share this link with the recipient so they land directly in the claim flow with the gift context already loaded."}
+											? "Share carefully. The link and QR are the private claim capability until the gift is redeemed."
+											: "Share either format with the recipient so they land directly in the private claim flow."}
 									</p>
 								</div>
 								<span className="gift-chip">Ready to share</span>
 							</div>
-							<div className="rounded-2xl border border-white/10 bg-black/10 p-4 space-y-3">
+							<div className="paper-surface space-y-3">
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div>
 										<div className="text-xs uppercase tracking-[0.18em] text-text-muted">
@@ -1795,39 +1887,76 @@ export default function SendPage() {
 										{giftPreviewMessage}
 									</p>
 								</div>
+								{readback.giftMode === "bearer" ? (
+									<div className="rounded-2xl border border-coral-500/20 bg-coral-50 px-4 py-3 text-sm text-coral-900">
+										This is a walletless bearer gift. The link and QR are sensitive
+										until redeemed; do not post them publicly or send them to a group
+										chat.
+									</div>
+								) : (
+									<div className="rounded-2xl border border-emerald-900/10 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+										This registered gift is targeted to the recipient wallet. The
+										link or QR opens the guided claim flow without exposing a direct
+										sender-to-recipient payment.
+									</div>
+								)}
 							</div>
-							<div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 font-mono text-xs text-white break-all">
-								{claimLink}
+							<div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+								<div className="space-y-3">
+									<div className="rounded-2xl border border-emerald-900/10 bg-white/50 px-4 py-3 font-mono text-xs text-ink-700 break-all">
+										{claimLink}
+									</div>
+									<div className="flex flex-wrap gap-3">
+										{canNativeShare ? (
+											<button
+												type="button"
+												className="btn-primary"
+												onClick={shareGiftLink}
+											>
+												Share Gift
+											</button>
+										) : null}
+										<button
+											type="button"
+											className={
+												canNativeShare ? "btn-secondary" : "btn-primary"
+											}
+											onClick={copyClaimLink}
+										>
+											{claimLinkCopied
+												? "Private Link Copied"
+												: "Copy Private Link"}
+										</button>
+										<button
+											type="button"
+											className="btn-secondary"
+											onClick={() => setQrPresentationOpen(true)}
+										>
+											Show QR Code
+										</button>
+										<a href={claimLink} className="btn-secondary">
+											Open Claim Flow
+										</a>
+									</div>
+								</div>
+								<GiftQrCard claimLink={claimLink} giftMode={readback.giftMode} />
 							</div>
-							<div className="flex flex-wrap gap-3">
-								{canNativeShare ? (
-									<button
-										type="button"
-										className="btn-primary"
-										onClick={shareGiftLink}
-									>
-										Share Gift
-									</button>
-								) : null}
-								<button
-									type="button"
-									className={canNativeShare ? "btn-secondary" : "btn-primary"}
-									onClick={copyClaimLink}
-								>
-									{claimLinkCopied ? "Claim Link Copied" : "Copy Claim Link"}
-								</button>
-								<a href={claimLink} className="btn-secondary">
-									Open Claim Flow
-								</a>
-							</div>
+							{qrPresentationOpen ? (
+								<GiftQrCard
+									claimLink={claimLink}
+									giftMode={readback.giftMode}
+									onClose={() => setQrPresentationOpen(false)}
+									presentation
+								/>
+							) : null}
 							<div className="grid gap-3 md:grid-cols-3">
 								<div className="gift-step">
 									<div className="text-xs uppercase tracking-[0.18em] text-text-muted">
-										Share
+										Share privately
 									</div>
 									<p className="mt-2 text-sm text-text-secondary">
-										Send the claim link to the recipient through any channel you
-										want.
+										Send the gift through a direct channel you trust. The QR and
+										link open the same claim URL.
 									</p>
 								</div>
 								<div className="gift-step">
@@ -1844,21 +1973,21 @@ export default function SendPage() {
 										Private claim
 									</div>
 									<p className="mt-2 text-sm text-text-secondary">
-										They save a recovery file and claim through the relayer
-										without a direct public sender-to-recipient payment trail.
+										They claim through the relayer without a direct public
+										sender-to-recipient payment trail.
 									</p>
 								</div>
 							</div>
 						</div>
 					) : null}
-					<details className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+					<details className="paper-surface">
 						<summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.16em] text-text-muted">
 							Advanced creation details
 						</summary>
 						<dl className="mt-4 grid gap-4 md:grid-cols-2">
 							<InfoItem label="Deposit Path" value={readback.depositPathLabel} />
 							<InfoItem
-								label="Bulletin Signer (SS58)"
+								label="Storage Sponsor Origin"
 								value={readback.bulletinSignerOrigin}
 							/>
 							<InfoItem label="Sender Owner (H160)" value={readback.senderOwner} />

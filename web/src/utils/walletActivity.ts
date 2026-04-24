@@ -3,6 +3,7 @@ import type { Address, Hex } from "viem";
 export type PrivateGiftMode = "registered" | "bearer";
 
 export type PrivateGiftRecord = {
+	bearerGiftKey?: Hex | null;
 	commitment: Hex;
 	createdAt: number;
 	giftMode: PrivateGiftMode;
@@ -10,6 +11,8 @@ export type PrivateGiftRecord = {
 	memoHash: Hex;
 	poolAddress: Address;
 	recipientLabel: string;
+	recipientOwner?: Address | null;
+	registryAddress?: Address | null;
 	status: "created" | "claimed";
 	transactionHash: Hex | null;
 };

@@ -66,6 +66,59 @@ w3 space create polkadot-stack-template
 
 This builds the frontend, uploads to IPFS, and prints the gateway URL plus the DotNS follow-up steps.
 
+### Dot.li / Triangle User Agent deployment
+
+StealthPay is currently deployed as a Dot.li product at:
+
+```text
+https://stealthpaygift24.dot.li/
+```
+
+The current Dot.li target is different from a normal static host:
+
+- the product host blocks chain transactions, external HTTP requests, and some host capabilities unless the app asks for permission through the Triangle User Agent APIs
+- the app should be deployed as a self-contained archive; an external-only bootstrap can render black because the Dot.li product frame may not execute it as the actual app bundle
+- large local proof assets should stay off the Dot.li archive and be loaded from the public relayer instead
+- the current app still has some direct ETH RPC / chain reads, so Dot.li may show a direct-chain-access warning until those paths are fully moved behind the host API or public indexer
+
+Recommended demo build:
+
+```bash
+cd web
+VITE_RELAYER_URL=https://stealthpay-relayer.onrender.com \
+VITE_STEALTHPAY_INDEXER_URL=https://stealthpay-relayer.onrender.com \
+VITE_ZK_ASSET_BASE_URL=https://stealthpay-relayer.onrender.com/zk/private-withdraw/ \
+npm run build
+rm -rf dist/zk
+cd ..
+NODE_OPTIONS=--max-old-space-size=16384 npx -y bulletin-deploy@latest --js-merkle web/dist stealthpaygift24.dot
+```
+
+Operational note: the JS Merkle deploy path can run out of memory on the full archive if the local Node heap is too small. Use a large Node heap, and avoid adding proof binaries back into `web/dist`.
+
+The hosted relayer/indexer is currently:
+
+```text
+https://stealthpay-relayer.onrender.com
+```
+
+It must expose:
+
+- `/bulletin/upload` for ciphertext-only Bulletin storage sponsorship
+- `/quote` and `/submit` for relayed private withdrawal
+- `/index/status`, `/index/deposit`, `/index/deposits`, `/index/announcement`, and `/index/withdrawal` for public event lookup
+- `/zk/private-withdraw/...` for hosted proving key / wasm assets
+
+For production-like storage sponsorship, configure one of these on the relayer:
+
+```bash
+BULLETIN_SIGNER_MNEMONIC=...
+# or a pre-authorized pool model for demos:
+BULLETIN_POOL_MNEMONIC=...
+```
+
+The sponsor signs only encrypted payload storage. It is not the sender, recipient, verifier, or spend authority.
+
 ### Other platforms
 
 Since the frontend is a static build, it works on any static hosting:

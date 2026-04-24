@@ -13,6 +13,12 @@
       "metadata": ".papi/metadata/bulletin.scale",
       "genesis": "0x744960c32e3a3df5440e1ecd4d34096f1ce2230d7016a5ada8a765d5a622b4ea",
       "codeHash": "0x1a82e5143be3211ded412b0368b486ce83bd41a80ec95eb267f6c204adda8365"
+    },
+    "paseo_hub": {
+      "wsUrl": "wss://asset-hub-paseo-rpc.n.dwellir.com",
+      "metadata": ".papi/metadata/paseo_hub.scale",
+      "genesis": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+      "codeHash": "0x8d6a039a69478214c5846f4504e80f3cd3d2374b4c964976b071aececac586fd"
     }
   }
 }

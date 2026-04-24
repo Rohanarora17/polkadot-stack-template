@@ -1,71 +1,80 @@
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useChainStore } from "./store/chainStore";
 import { useConnectionManagement } from "./hooks/useConnection";
+import { useStealthPayAccount } from "./hooks/useStealthPayAccount";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 
 export default function App() {
 	const location = useLocation();
-	const pallets = useChainStore((s) => s.pallets);
 	const connected = useChainStore((s) => s.connected);
+	const stealthAccount = useStealthPayAccount();
 
 	useConnectionManagement();
 
 	const navItems = [
 		{ path: "/", label: "Home", enabled: true },
 		{ path: "/wallet", label: "Wallet", enabled: true },
-		{ path: "/send", label: "Send Gift", enabled: pallets.revive === true },
-		{ path: "/claim", label: "Claim", enabled: pallets.revive === true },
+		{ path: "/send", label: "Send Gift", enabled: true },
+		{ path: "/claim", label: "Claim", enabled: true },
 		{ path: "/advanced", label: "Advanced", enabled: true },
 	];
 
 	return (
 		<div className="min-h-screen bg-pattern relative">
-			{/* Ambient gradient orbs */}
 			<div
 				className="gradient-orb"
-				style={{ background: "#e6007a", top: "-200px", right: "-100px" }}
+				style={{ background: "#d96f4f", top: "-220px", right: "-120px" }}
 			/>
 			<div
 				className="gradient-orb"
-				style={{ background: "#4cc2ff", bottom: "-200px", left: "-100px" }}
+				style={{ background: "#326c52", bottom: "-240px", left: "-140px" }}
 			/>
 
-			{/* Navigation */}
-			<nav className="sticky top-0 z-50 border-b border-white/[0.06] backdrop-blur-xl bg-surface-950/80">
-				<div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-6">
-					<Link to="/" className="flex items-center gap-2.5 shrink-0 group">
-						<div className="w-7 h-7 rounded-lg bg-gradient-to-br from-polka-500 to-polka-700 flex items-center justify-center shadow-glow transition-shadow group-hover:shadow-glow-lg">
-							<svg viewBox="0 0 16 16" className="w-4 h-4" fill="white">
-								<circle cx="8" cy="3" r="2" />
-								<circle cx="3" cy="8" r="2" />
-								<circle cx="13" cy="8" r="2" />
-								<circle cx="8" cy="13" r="2" />
-								<circle cx="8" cy="8" r="1.5" opacity="0.6" />
+			<nav className="sticky top-0 z-50 border-b border-ink-950/10 bg-ivory-50/90 backdrop-blur-xl">
+				<div className="max-w-6xl mx-auto flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 md:flex-nowrap md:gap-6">
+					<Link to="/" className="flex min-w-0 items-center gap-2.5 shrink-0 group">
+						<div className="relative flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-900/15 bg-ivory-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)] transition-transform group-hover:-rotate-3">
+							<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
+								<path
+									d="M5 9.5h14v9H5z"
+									fill="#18372d"
+									stroke="#18372d"
+									strokeLinejoin="round"
+								/>
+								<path
+									d="M7 9.5V7.8C7 5.7 8.6 4 10.6 4c1.1 0 2.1.5 2.8 1.3.7-.8 1.7-1.3 2.8-1.3 2 0 3.6 1.7 3.6 3.8v1.7"
+									stroke="#d96f4f"
+									strokeLinecap="round"
+									strokeWidth="1.8"
+								/>
+								<path d="M12 9.5v9" stroke="#fffaf0" strokeWidth="1.5" />
+								<path d="M5 13h14" stroke="#fffaf0" strokeWidth="1.5" />
 							</svg>
 						</div>
-						<div className="leading-tight">
-							<div className="text-base font-semibold text-text-primary font-display tracking-tight">
+						<div className="min-w-0 leading-tight">
+							<div className="font-display text-lg font-semibold tracking-tight text-ink-950">
 								StealthPay
 							</div>
-							<div className="text-[11px] uppercase tracking-[0.16em] text-text-muted">
-								Built on the Polkadot Stack
+							<div className="max-w-[11rem] truncate text-[11px] uppercase tracking-[0.16em] text-ink-700 sm:max-w-none">
+								Private gift protocol
 							</div>
 						</div>
 					</Link>
 
-					<div className="flex gap-0.5 overflow-x-auto">
+					<div className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto px-1 pb-1 md:order-none md:mx-0 md:w-auto md:pb-0">
 						{navItems.map((item) =>
 							item.enabled ? (
 								<Link
 									key={item.path}
 									to={item.path}
-									className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+									className={`relative rounded-full px-3 py-1.5 text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
 										location.pathname === item.path
-											? "text-white"
-											: "text-text-secondary hover:text-text-primary hover:bg-white/[0.04]"
+											? "active-nav-link"
+											: "text-ink-700 hover:text-ink-950 hover:bg-white/50"
 									}`}
 								>
 									{location.pathname === item.path && (
-										<span className="absolute inset-0 rounded-lg bg-polka-500/15 border border-polka-500/25" />
+										<span className="absolute inset-0 rounded-full bg-emerald-900 shadow-[0_12px_24px_-18px_rgba(24,55,45,0.85)]" />
 									)}
 									<span className="relative">{item.label}</span>
 								</Link>
@@ -81,12 +90,21 @@ export default function App() {
 						)}
 					</div>
 
-					{/* Connection indicator */}
-					<div className="ml-auto flex items-center gap-2 shrink-0">
+					<div className="ml-auto flex flex-wrap items-center justify-end gap-2 shrink-0">
+						<Link
+							to="/wallet"
+							className="hidden max-w-[24rem] rounded-2xl border border-emerald-900/10 bg-white/60 px-3 py-1.5 text-[11px] font-semibold text-ink-800 shadow-[0_14px_30px_-24px_rgba(24,55,45,0.55)] sm:block"
+						>
+							<span className="text-ink-600">StealthPay account</span>
+							<span className="mx-2 text-ink-300">/</span>
+							<span>{stealthAccount.statusLabel}</span>
+							<span className="mx-2 text-ink-300">/</span>
+							<span className="font-mono">{stealthAccount.displayLabel}</span>
+						</Link>
 						<span
 							className={`w-2 h-2 rounded-full transition-colors duration-500 ${
 								connected
-									? "bg-accent-green shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+									? "bg-emerald-600 shadow-[0_0_6px_rgba(50,108,82,0.5)]"
 									: "bg-text-muted"
 							}`}
 						/>
@@ -98,8 +116,10 @@ export default function App() {
 			</nav>
 
 			{/* Main content */}
-			<main className="relative z-10 max-w-5xl mx-auto px-4 py-8">
-				<Outlet />
+			<main className="relative z-10 max-w-6xl mx-auto px-4 py-8">
+				<RouteErrorBoundary resetKey={`${location.pathname}${location.search}`}>
+					<Outlet />
+				</RouteErrorBoundary>
 			</main>
 		</div>
 	);
