@@ -1,4 +1,4 @@
-x# Polkadot Stack Template
+# Polkadot Stack Template
 
 A developer starter template demonstrating the full Polkadot technology stack through a **Proof of Existence** system — the same concept implemented as a Substrate pallet, a Solidity EVM contract, and a Solidity PVM contract. Drop a file, claim its hash on-chain, and optionally upload it to IPFS via the Bulletin Chain.
 
@@ -26,7 +26,7 @@ Current StealthPay state:
 Current StealthPay gaps and risks:
 
 - the working public demo is the normal browser deployment at `https://web-rouge-one-36.vercel.app`
-- Dot.li hosting is isolated on the `codex/dotli-host-integration` branch because the P-wallet host transaction flow currently stalls on `Revive.map_account()` for unmapped accounts
+- Dot.li hosting is isolated on the `dotli-host-integration` branch because the P-wallet host transaction flow currently stalls on `Revive.map_account()` for unmapped accounts
 - the current frontend still has some direct chain / ETH RPC reads, so Dot.li may show a direct-chain-access warning until those reads are moved behind the host API or relayer indexer
 - `Revive.map_account()` works conceptually and is required for P-wallet accounts to call PVM contracts, but the Dot.li hosted signing path is not reliable enough for the main demo
 - the long-term clean contract-write path should follow the Triangle User Agent demo pattern with `@polkadot-api/sdk-ink` dry-run + `send().signSubmitAndWatch(...)`; the current implementation still manually builds `Revive.call(...)`
