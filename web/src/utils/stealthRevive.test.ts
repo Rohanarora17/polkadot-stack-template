@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { encodeAddress } from "@polkadot/util-crypto";
 
 import {
 	PASEO_HUB_TESTNET_CHAIN_ID,
@@ -6,6 +7,7 @@ import {
 	contractValueToReviveCallValue,
 	formatPlanck,
 	parseUnitAmount,
+	sameSs58Account,
 } from "./stealthRevive";
 
 describe("stealth Revive value helpers", () => {
@@ -27,5 +29,18 @@ describe("stealth Revive value helpers", () => {
 
 	it("leaves non-Paseo contract values unchanged", () => {
 		expect(contractValueToReviveCallValue(10n ** 18n, 420420421)).toBe(10n ** 18n);
+	});
+
+	it("compares mapped accounts by AccountId bytes instead of SS58 prefix", () => {
+		const publicKey = new Uint8Array(32).fill(7);
+		expect(sameSs58Account(encodeAddress(publicKey, 0), encodeAddress(publicKey, 42))).toBe(
+			true,
+		);
+		expect(
+			sameSs58Account(
+				encodeAddress(publicKey, 42),
+				encodeAddress(new Uint8Array(32).fill(8), 42),
+			),
+		).toBe(false);
 	});
 });
