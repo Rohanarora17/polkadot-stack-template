@@ -1,4 +1,4 @@
-import{r as p,j as e}from"./index-DRyq2Hq5.js";import{y as n}from"./EmbeddedWalletProvider-CamoBLTb.js";import{C as x}from"./check-CKy_ZlDk.js";import{C as u}from"./copy-DgiqTkh6.js";let a=n.button`
+import{r as p,j as e}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as n}from"./EmbeddedWalletProvider-CamoBLTb.js";import{C as x}from"./check-CKy_ZlDk.js";import{C as u}from"./copy-DgiqTkh6.js";let a=n.button`
   display: flex;
   align-items: center;
   justify-content: end;

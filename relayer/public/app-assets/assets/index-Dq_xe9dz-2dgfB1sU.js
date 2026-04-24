@@ -1,4 +1,4 @@
-import{j as i}from"./index-DRyq2Hq5.js";import{y as e}from"./EmbeddedWalletProvider-CamoBLTb.js";const m=({size:r,centerIcon:t})=>i.jsx(s,{$size:r,children:i.jsxs(n,{children:[i.jsx(a,{}),i.jsx(d,{}),t?i.jsx(o,{children:t}):null]})});let s=e.div`
+import{j as i}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as e}from"./EmbeddedWalletProvider-CamoBLTb.js";const m=({size:r,centerIcon:t})=>i.jsx(s,{$size:r,children:i.jsxs(n,{children:[i.jsx(a,{}),i.jsx(d,{}),t?i.jsx(o,{children:t}):null]})});let s=e.div`
   --spinner-size: ${r=>r.$size?r.$size:"96px"};
 
   display: inline-flex;

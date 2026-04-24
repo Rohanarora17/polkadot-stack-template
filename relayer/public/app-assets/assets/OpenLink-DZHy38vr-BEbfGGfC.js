@@ -1,4 +1,4 @@
-import{r as t,j as n}from"./index-DRyq2Hq5.js";import{y as a}from"./EmbeddedWalletProvider-CamoBLTb.js";const s=r=>{let[e,o]=t.useState(!1);return n.jsx(i,{color:r.color,href:r.url,target:"_blank",rel:"noreferrer noopener",onClick:()=>{o(!0),setTimeout((()=>o(!1)),1500)},justOpened:e,children:r.text})};let i=a.a`
+import{r as t,j as n}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as a}from"./EmbeddedWalletProvider-CamoBLTb.js";const s=r=>{let[e,o]=t.useState(!1);return n.jsx(i,{color:r.color,href:r.url,target:"_blank",rel:"noreferrer noopener",onClick:()=>{o(!0),setTimeout((()=>o(!1)),1500)},justOpened:e,children:r.text})};let i=a.a`
   display: flex;
   align-items: center;
   gap: 6px;

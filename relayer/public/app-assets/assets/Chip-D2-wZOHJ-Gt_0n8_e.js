@@ -1,4 +1,4 @@
-import{j as l}from"./index-DRyq2Hq5.js";import{O as s,g as n,y as c}from"./EmbeddedWalletProvider-CamoBLTb.js";import{n as t}from"./LoadingSkeleton-U6-3yFwI-pA136IVN.js";const u=({children:o,color:i,isLoading:r,isPulsing:e,...a})=>l.jsx(g,{$color:i,$isLoading:r,$isPulsing:e,...a,children:o});let g=c.span`
+import{j as l}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{O as s,g as n,y as c}from"./EmbeddedWalletProvider-CamoBLTb.js";import{n as t}from"./LoadingSkeleton-U6-3yFwI-pA136IVN.js";const u=({children:o,color:i,isLoading:r,isPulsing:e,...a})=>l.jsx(g,{$color:i,$isLoading:r,$isPulsing:e,...a,children:o});let g=c.span`
   padding: 0.25rem;
   font-size: 0.75rem;
   font-weight: 500;

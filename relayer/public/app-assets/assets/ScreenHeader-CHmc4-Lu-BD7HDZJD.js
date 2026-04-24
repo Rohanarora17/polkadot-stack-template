@@ -1,4 +1,4 @@
-import{j as r}from"./index-DRyq2Hq5.js";import{y as e}from"./EmbeddedWalletProvider-CamoBLTb.js";const c=({title:i,description:t,children:n,...o})=>r.jsx(l,{...o,children:r.jsxs(r.Fragment,{children:[r.jsx("h3",{children:i}),typeof t=="string"?r.jsx("p",{children:t}):t,n]})});e(c)`
+import{j as r}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as e}from"./EmbeddedWalletProvider-CamoBLTb.js";const c=({title:i,description:t,children:n,...o})=>r.jsx(l,{...o,children:r.jsxs(r.Fragment,{children:[r.jsx("h3",{children:i}),typeof t=="string"?r.jsx("p",{children:t}):t,n]})});e(c)`
   margin-bottom: 24px;
 `;const d=({title:i,description:t,icon:n,children:o,...s})=>r.jsxs(p,{...s,children:[n||null,r.jsx("h3",{children:i}),t&&typeof t=="string"?r.jsx("p",{children:t}):t,o]});let l=e.div`
   display: flex;

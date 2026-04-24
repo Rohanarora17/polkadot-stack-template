@@ -1,4 +1,4 @@
-import{j as s}from"./index-DRyq2Hq5.js";import{y as d}from"./EmbeddedWalletProvider-CamoBLTb.js";let c=d.a`
+import{j as s}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as d}from"./EmbeddedWalletProvider-CamoBLTb.js";let c=d.a`
   && {
     color: ${({$variant:r})=>r==="underlined"?"var(--privy-color-foreground)":"var(--privy-link-navigation-color, var(--privy-color-accent))"};
     font-weight: 400;
