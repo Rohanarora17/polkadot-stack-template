@@ -12,7 +12,7 @@ import { CID } from "multiformats/cid";
 import * as digest from "multiformats/hashes/digest";
 import { bulletin } from "@polkadot-api/descriptors";
 import { sr25519CreateDerive } from "@polkadot-labs/hdkd";
-import { entropyToMiniSecret, mnemonicToEntropy, ss58Address } from "@polkadot-labs/hdkd-helpers";
+import { DEV_PHRASE, entropyToMiniSecret, mnemonicToEntropy, ss58Address } from "@polkadot-labs/hdkd-helpers";
 import { Binary, createClient, Enum } from "polkadot-api";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import { getPolkadotSigner } from "polkadot-api/signer";
@@ -40,6 +40,8 @@ const BULLETIN_WS = process.env.BULLETIN_WS || "wss://paseo-bulletin-rpc.polkado
 const MAX_BULLETIN_UPLOAD_BYTES = Number(process.env.BULLETIN_MAX_UPLOAD_BYTES || 8 * 1024 * 1024);
 const BULLETIN_UPLOAD_RATE_WINDOW_MS = Number(process.env.BULLETIN_UPLOAD_RATE_WINDOW_MS || 60_000);
 const BULLETIN_UPLOAD_RATE_MAX = Number(process.env.BULLETIN_UPLOAD_RATE_MAX || 30);
+const BULLETIN_POOL_SIZE = Number(process.env.BULLETIN_POOL_SIZE || 10);
+const BULLETIN_POOL_PATH_PREFIX = process.env.BULLETIN_POOL_PATH_PREFIX || "//deploy";
 const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || "")
 	.split(",")
 	.map((origin) => origin.trim())
@@ -296,8 +298,8 @@ app.post("/bulletin/upload", async (req, res) => {
 			return;
 		}
 
-		const signer = getBulletinSigner();
 		const api = getBulletinApi();
+		const signer = await getBulletinSigner({ api, requiredBytes: bytes.length });
 		const authorization = await api.query.TransactionStorage.Authorizations.getValue(
 			Enum("Account", signer.address),
 		);
@@ -817,18 +819,66 @@ function getBulletinApi() {
 	return bulletinClient.getTypedApi(bulletin);
 }
 
-function getBulletinSigner() {
+async function getBulletinSigner({ api, requiredBytes }) {
 	const mnemonic = process.env.BULLETIN_SIGNER_MNEMONIC;
-	if (!mnemonic) {
+	if (mnemonic) {
+		return deriveBulletinSigner({
+			mnemonic,
+			path: process.env.BULLETIN_SIGNER_PATH || "",
+		});
+	}
+
+	const poolMnemonic = process.env.BULLETIN_POOL_MNEMONIC || DEV_PHRASE;
+	const candidates = Array.from({ length: BULLETIN_POOL_SIZE }, (_, index) =>
+		deriveBulletinSigner({
+			index,
+			mnemonic: poolMnemonic,
+			path: `${BULLETIN_POOL_PATH_PREFIX}/${index}`,
+		}),
+	);
+	const authorizations = await Promise.all(
+		candidates.map(async (candidate) => {
+			try {
+				const authorization = await api.query.TransactionStorage.Authorizations.getValue(
+					Enum("Account", candidate.address),
+				);
+				return {
+					...candidate,
+					bytes: authorization?.extent.bytes ?? 0n,
+					transactions: authorization ? BigInt(authorization.extent.transactions) : 0n,
+				};
+			} catch {
+				return { ...candidate, bytes: 0n, transactions: 0n };
+			}
+		}),
+	);
+	const selected = authorizations
+		.filter(
+			(candidate) =>
+				candidate.transactions > 0n && candidate.bytes >= BigInt(requiredBytes),
+		)
+		.sort((a, b) => {
+			if (a.transactions !== b.transactions) return a.transactions > b.transactions ? -1 : 1;
+			if (a.bytes !== b.bytes) return a.bytes > b.bytes ? -1 : 1;
+			return a.index - b.index;
+		})[0];
+
+	if (!selected) {
 		throw new Error(
-			"BULLETIN_SIGNER_MNEMONIC is not configured. Set an authorized Bulletin signer on the relayer to enable app-managed gift payload upload.",
+			"BULLETIN_SIGNER_MNEMONIC is not configured and no authorized Bulletin pool signer has enough remaining upload quota.",
 		);
 	}
 
+	return selected;
+}
+
+function deriveBulletinSigner({ index = 0, mnemonic, path }) {
 	const derive = sr25519CreateDerive(entropyToMiniSecret(mnemonicToEntropy(mnemonic)));
-	const keypair = derive(process.env.BULLETIN_SIGNER_PATH || "");
+	const keypair = derive(path);
 	return {
 		address: ss58Address(keypair.publicKey),
+		index,
+		path,
 		signer: getPolkadotSigner(keypair.publicKey, "Sr25519", keypair.sign),
 	};
 }
