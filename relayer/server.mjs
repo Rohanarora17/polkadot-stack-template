@@ -125,6 +125,18 @@ app.get("/health", async (_req, res) => {
 	res.json({ ok: true });
 });
 
+app.use(
+	"/zk",
+	express.static(path.resolve(ROOT_DIR, "web/public/zk"), {
+		immutable: true,
+		maxAge: "1y",
+		setHeaders(res) {
+			res.setHeader("Access-Control-Allow-Origin", "*");
+			res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+		},
+	}),
+);
+
 app.get("/index/status", async (_req, res) => {
 	const finalizedBlock = await getIndexerFinalizedBlock().catch(() => null);
 	res.json({
