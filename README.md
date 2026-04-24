@@ -6,19 +6,30 @@ Students do not need to use every part of this repo. The runtime, pallet, contra
 
 ## StealthPay Status
 
-This repo now also contains a working local-first StealthPay slice alongside the original Proof of Existence template:
+This repo now also contains a working StealthPay product slice alongside the original Proof of Existence template:
 
 - `Register`: derive a stealth meta-address from a dedicated seed and register it on the PVM contract
 - `Private Send`: look up the recipient meta-address, derive a private delivery secret, encrypt the pool note plus optional text memo, upload it to Bulletin Chain, and call `announcePrivateDeposit`
 - `Private Withdraw`: scan direct sender-to-pool announcements, decrypt the delivered pool note, generate a Groth16 proof, and withdraw through a relayer to a fresh destination
 - `Public Recovery`: keep the older stealth-address recovery flow available as an advanced escape hatch for debugging and non-private fund recovery
 
-Current StealthPay gaps:
+Current StealthPay state:
 
-- QR-paired Pwallet is not implemented yet
-- the hidden stealth-to-pool shield-hop fallback is not active yet; the current judge-facing path is the direct sender-to-pool flow
-- on the local `Revive.call(...)` path, `eth-rpc` does not expose the relevant contract logs, so private withdraw falls back to runtime event decoding for both announcements and pool deposits
-- on Paseo, the registered-recipient private-send route now works through the same Substrate signer for Bulletin upload and `Revive.call(...)`; the app applies the measured Paseo `msg.value` scale (`Revive.call.value * 1e8`)
+- the consumer product shell is now gift-first: `Home`, `Wallet`, `Send Gift`, `Claim`, and `Advanced`
+- `Send Gift` supports registered-recipient gifts and walletless bearer-link gifts
+- gift sharing includes both a private link and a QR claim card
+- walletless claims use Privy as the primary embedded H160 claim wallet provider
+- encrypted Bulletin payload upload can be sponsored by the public relayer so normal users do not need to pre-authorize Bulletin storage
+- the hosted relayer also exposes public-only indexing endpoints for exact deposit, announcement, and withdrawal lookup
+- the Paseo sender path now uses Substrate `Revive.call(...)` with the measured value scale for the fixed `1 UNIT` pool
+
+Current StealthPay gaps and risks:
+
+- Dot.li hosting is actively being hardened; the app must be deployed as a self-contained archive because the product host does not reliably execute an external-only bootstrap
+- the current frontend still has some direct chain / ETH RPC reads, so Dot.li may show a direct-chain-access warning until those reads are moved behind the host API or relayer indexer
+- `Revive.map_account()` is now skipped when the sender is already mapped, but genuinely unmapped P-wallet accounts still need an explicit onboarding transaction before smart-contract sends
+- the long-term clean contract-write path should follow the Triangle User Agent demo pattern with `@polkadot-api/sdk-ink` dry-run + `send().signSubmitAndWatch(...)`; the current implementation still manually builds `Revive.call(...)`
+- hidden stealth-to-pool shield-hop fallback is not active; the current judge-facing privacy story is sender-to-pool deposit plus relayed private withdrawal
 
 The product shell now exposes StealthPay through:
 
@@ -41,10 +52,10 @@ The current UX hardening pass also simplified the main working pages:
     - Substrate extension accounts, resolved through `ReviveApi.address`
     - DotNS names such as `alice.dot`, `alice.paseo.li`, or `alice`
 - if a recipient identifier resolves but that wallet has not registered a StealthPay private inbox, the send flow now routes the sender toward a walletless bearer gift link instead of ending in a technical error
-- `Claim` now hides scan/proof details by default; registered-recipient gifts can be claimed directly, while walletless bearer gifts still require saving the generated claim wallet before payout
+- `Claim` now hides scan/proof details by default; registered-recipient gifts can be claimed directly, while walletless bearer gifts claim to an embedded H160 wallet when configured
 - `Send Gift` now also produces a shareable gift link that lands on `#/gift` before continuing into the wallet-connected `#/claim` flow with pool, registry, and transaction context preloaded
 - when a registered-recipient claim link is opened, `Claim` now uses a more guided path: unlock wallet, auto-search the linked gift, then claim privately through the relayer
-- walletless bearer gifts claim to a fresh generated local wallet by default, with an encrypted recovery file required before claim
+- walletless bearer gifts use an embedded wallet provider when configured, with the browser-local encrypted vault kept as a fallback rather than the main path
 - the route split is now explicit:
     - `#/claim` is the consumer gift-opening flow
     - `#/withdraw` remains the advanced technical claim/recovery surface
@@ -137,7 +148,11 @@ After `./scripts/start-all.sh`, start the local relayer in a second terminal:
 
 For Paseo deployment and relayer use, the repo now reads secrets from a single repo-root
 `.env` file. Copy [`.env.example`](.env.example) to `.env`, then fill in `PRIVATE_KEY` for
-contract deployment and `RELAYER_PRIVATE_KEY` for the relayer.
+contract deployment and `RELAYER_PRIVATE_KEY` for the relayer. Set
+`BULLETIN_SIGNER_MNEMONIC` on the relayer for production storage sponsorship, or use a
+pre-authorized `BULLETIN_POOL_MNEMONIC` for the demo pool-account model. For walletless
+claims, set `VITE_PRIVY_APP_ID`; Privy is the primary embedded H160 wallet provider in
+the current architecture.
 
 Then the current local private-send demo loop is:
 
@@ -146,8 +161,8 @@ Then the current local private-send demo loop is:
 3. Keep the shown stealth seed backup if you want to restore the same recipient on another browser
 4. Open `http://127.0.0.1:5173/#/send`
 5. Send to the registered recipient through the privacy pool and optionally add a short private text memo
-6. If using a real Substrate signer for memo upload, authorize that Substrate account first on Bulletin Paseo
-7. On Paseo, the `Substrate Revive.call` path can submit the actual pool deposit with the same Substrate account used for Bulletin upload
+6. Encrypted gift payloads are uploaded by the storage sponsor when configured; users do not need to visit Bulletin first
+7. On Paseo, the default `Substrate Revive.call` path submits the actual pool deposit with the same Substrate wallet used for the product flow
 8. Copy the generated claim link or open `http://127.0.0.1:5173/#/claim`
 9. Use the same recipient signer (or import the saved stealth seed), let the claim page preload the gift context, unlock the wallet, and claim privately through the relayer
 10. Use `http://127.0.0.1:5173/#/scan` only when you need the older public recovery path
@@ -233,21 +248,22 @@ cd contracts/pvm && npx hardhat test
 - [PAPI Documentation](https://papi.how/)
 - [Polkadot Faucet](https://faucet.polkadot.io/) (TestNet tokens)
 - [Blockscout Explorer](https://blockscout-testnet.polkadot.io/) (Polkadot TestNet)
-- [Bulletin Chain Authorization](https://paritytech.github.io/polkadot-bulletin-chain/) - On Bulletin Paseo, use `Faucet` -> `Authorize Account` to request a temporary upload allowance for the Substrate account that will sign the upload.
+- [Bulletin Chain Authorization](https://paritytech.github.io/polkadot-bulletin-chain/) - authorize the relayer storage-sponsor account once for app-managed encrypted payload uploads; direct user authorization remains an advanced fallback only.
 
 ## StealthPay Public Event Indexing
 
 StealthPay does not use a private database for gifts or notes. The frontend only indexes public events:
 
-- first: optional Blockscout address logs on Paseo
+- first: the StealthPay public indexer exposed by the relayer
+- fallback: optional Blockscout address logs on Paseo
 - fallback: direct `eth_getLogs`
-- fallback: direct `Revive.ContractEmitted` runtime-event decoding
+- fallback: bounded `Revive.ContractEmitted` runtime-event decoding
 
 Configure the hosted indexer path in `web/.env.local` if needed:
 
 ```bash
-VITE_STEALTHPAY_INDEXER_KIND=blockscout
-VITE_STEALTHPAY_INDEXER_URL=https://blockscout-testnet.polkadot.io
+VITE_RELAYER_URL=https://stealthpay-relayer.onrender.com
+VITE_STEALTHPAY_INDEXER_URL=https://stealthpay-relayer.onrender.com
 ```
 
 Set `VITE_STEALTHPAY_INDEXER_KIND=none` to force direct RPC/runtime scanning.
