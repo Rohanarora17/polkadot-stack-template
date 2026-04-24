@@ -1,4 +1,4 @@
-import{j as r}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as a}from"./EmbeddedWalletProvider-CamoBLTb.js";let l=({data:t})=>{let e=o=>typeof o=="object"&&o!==null?r.jsx(d,{children:Object.entries(o).map((([i,n])=>r.jsxs("li",{children:[r.jsxs("strong",{children:[i,":"]})," ",e(n)]},i)))}):r.jsx("span",{children:String(o)});return r.jsx("div",{children:e(t)})};const s=a.div`
+import{j as r}from"./index-DRyq2Hq5.js";import{y as a}from"./EmbeddedWalletProvider-CamoBLTb.js";let l=({data:t})=>{let e=o=>typeof o=="object"&&o!==null?r.jsx(d,{children:Object.entries(o).map((([i,n])=>r.jsxs("li",{children:[r.jsxs("strong",{children:[i,":"]})," ",e(n)]},i)))}):r.jsx("span",{children:String(o)});return r.jsx("div",{children:e(t)})};const s=a.div`
   margin-top: 1.5rem;
   background-color: var(--privy-color-background-2);
   border-radius: var(--privy-border-radius-md);

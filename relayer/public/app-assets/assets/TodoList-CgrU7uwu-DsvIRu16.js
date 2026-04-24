@@ -1,4 +1,4 @@
-import{j as t,G as n}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as o}from"./EmbeddedWalletProvider-CamoBLTb.js";import{c as a}from"./createLucideIcon-7XVcqml7.js";import{C as c}from"./check-CKy_ZlDk.js";/**
+import{j as t,G as n}from"./index-DRyq2Hq5.js";import{y as o}from"./EmbeddedWalletProvider-CamoBLTb.js";import{c as a}from"./createLucideIcon-7XVcqml7.js";import{C as c}from"./check-CKy_ZlDk.js";/**
  * @license lucide-react v0.554.0 - ISC
  *
  * This source code is licensed under the ISC license.

@@ -1,4 +1,4 @@
-import{j as e}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{F as l}from"./ExclamationTriangleIcon-DoOSbrIg.js";import{y as i}from"./EmbeddedWalletProvider-CamoBLTb.js";const c=({children:r,theme:o,className:t})=>e.jsxs(a,{$theme:o,className:t,children:[e.jsx(l,{width:"20px",height:"20px",color:"var(--privy-color-icon-warning)",strokeWidth:2,style:{flexShrink:0}}),e.jsx(s,{$theme:o,children:r})]});let a=i.div`
+import{j as e}from"./index-DRyq2Hq5.js";import{F as l}from"./ExclamationTriangleIcon-DoOSbrIg.js";import{y as i}from"./EmbeddedWalletProvider-CamoBLTb.js";const c=({children:r,theme:o,className:t})=>e.jsxs(a,{$theme:o,className:t,children:[e.jsx(l,{width:"20px",height:"20px",color:"var(--privy-color-icon-warning)",strokeWidth:2,style:{flexShrink:0}}),e.jsx(s,{$theme:o,children:r})]});let a=i.div`
   display: flex;
   gap: 0.75rem;
   background-color: var(--privy-color-warn-bg);

@@ -1,4 +1,4 @@
-import{j as r,G as o}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{y as n,m as y}from"./EmbeddedWalletProvider-CamoBLTb.js";import{T as b,u as w}from"./ModalHeader-ByY2wsBw-B3a4ZPGb.js";import{t as j}from"./index-Dq_xe9dz-2dgfB1sU.js";const k=n.div`
+import{j as r,G as o}from"./index-DRyq2Hq5.js";import{y as n,m as y}from"./EmbeddedWalletProvider-CamoBLTb.js";import{T as b,u as w}from"./ModalHeader-ByY2wsBw-B3a4ZPGb.js";import{t as j}from"./index-Dq_xe9dz-2dgfB1sU.js";const k=n.div`
   /* spacing tokens */
   --screen-space: 16px; /* base 1x = 16 */
   --screen-space-lg: calc(var(--screen-space) * 1.5); /* 24px */

@@ -1,4 +1,4 @@
-import{r as s}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";/**
+import{r as s}from"./index-DRyq2Hq5.js";/**
  * @license lucide-react v0.554.0 - ISC
  *
  * This source code is licensed under the ISC license.

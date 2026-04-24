@@ -1,4 +1,4 @@
-import{j as e,r as d}from"https://bafybeidkcgg67fl5mea5csvoarnpow624tnzw54iglnvmjyzw7cy75bkxe.app.dot.li/assets/index-DRyq2Hq5.js";import{av as p,r as P,y as r}from"./EmbeddedWalletProvider-CamoBLTb.js";import{p as S,v as u,h as v}from"./WalletLink-Cw3j6GNA-DFQRsSTe.js";import{c as g}from"./ethers-C123aV2r-BTgB3eap.js";import{d as f}from"./Layouts-BlFm53ED-DM0mT-Ag.js";import{F as I}from"./ChevronDownIcon-CxqOb9V_.js";const h=({label:i,children:n,valueStyles:t})=>e.jsxs(C,{children:[e.jsx("div",{children:i}),e.jsx(B,{style:{...t},children:n})]});let C=r.div`
+import{j as e,r as d}from"./index-DRyq2Hq5.js";import{av as p,r as P,y as r}from"./EmbeddedWalletProvider-CamoBLTb.js";import{p as S,v as u,h as v}from"./WalletLink-Cw3j6GNA-DFQRsSTe.js";import{c as g}from"./ethers-C123aV2r-BTgB3eap.js";import{d as f}from"./Layouts-BlFm53ED-DM0mT-Ag.js";import{F as I}from"./ChevronDownIcon-CxqOb9V_.js";const h=({label:i,children:n,valueStyles:t})=>e.jsxs(C,{children:[e.jsx("div",{children:i}),e.jsx(B,{style:{...t},children:n})]});let C=r.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
