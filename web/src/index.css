@@ -3,185 +3,427 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --color-polka: 230 0 122;
-    --color-surface: 10 10 15;
-  }
+	:root {
+		--color-polka: 230 0 122;
+		--color-surface: 255 250 240;
+	}
 
-  body {
-    @apply font-body antialiased;
-    background-color: #0a0a0f;
-    color: #f0eef5;
-  }
+	body {
+		@apply font-body antialiased;
+		background:
+			radial-gradient(circle at 18% 8%, rgba(217, 111, 79, 0.16), transparent 26rem),
+			radial-gradient(circle at 86% 0%, rgba(50, 108, 82, 0.14), transparent 28rem),
+			linear-gradient(180deg, #fffaf0 0%, #f7edda 52%, #ead7b6 100%);
+		color: #211f1a;
+	}
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(155, 151, 168, 0.25);
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(155, 151, 168, 0.4);
-  }
+	/* Custom scrollbar */
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background: rgba(62, 58, 49, 0.22);
+		border-radius: 3px;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(62, 58, 49, 0.34);
+	}
 
-  /* Selection color */
-  ::selection {
-    background: rgba(230, 0, 122, 0.3);
-    color: #fff;
-  }
+	/* Selection color */
+	::selection {
+		background: rgba(217, 111, 79, 0.28);
+		color: #151611;
+	}
 }
 
 @layer components {
-  .card {
-    @apply rounded-xl border border-white/[0.06] p-5;
-    background: linear-gradient(
-      135deg,
-      rgba(16, 16, 24, 0.85) 0%,
-      rgba(20, 18, 28, 0.8) 100%
-    );
-    backdrop-filter: blur(12px);
-    box-shadow:
-      0 1px 3px 0 rgba(0, 0, 0, 0.3),
-      0 1px 2px -1px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
-  }
+	.card {
+		@apply rounded-[1.35rem] border p-5;
+		color: #151611;
+		border-color: rgba(21, 22, 17, 0.1);
+		background: linear-gradient(
+			135deg,
+			rgba(255, 250, 240, 0.88) 0%,
+			rgba(247, 237, 218, 0.78) 100%
+		);
+		backdrop-filter: blur(12px);
+		box-shadow:
+			0 20px 60px -36px rgba(21, 22, 17, 0.5),
+			inset 0 1px 0 0 rgba(255, 255, 255, 0.62);
+	}
 
-  .card-hover {
-    @apply card transition-all duration-300;
-  }
-  .card-hover:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    box-shadow:
-      0 4px 12px 0 rgba(0, 0, 0, 0.4),
-      0 2px 4px -1px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
-    transform: translateY(-1px);
-  }
+	.card-hover {
+		@apply card transition-all duration-300;
+	}
+	.card-hover:hover {
+		border-color: rgba(24, 55, 45, 0.18);
+		box-shadow:
+			0 24px 70px -36px rgba(21, 22, 17, 0.55),
+			inset 0 1px 0 0 rgba(255, 255, 255, 0.72);
+		transform: translateY(-1px);
+	}
 
-  .input-field {
-    @apply rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-text-primary font-mono text-sm;
-    @apply transition-all duration-200 placeholder:text-text-muted;
-    @apply focus:outline-none focus:border-polka-500/40 focus:ring-1 focus:ring-polka-500/20;
-  }
+	.input-field {
+		@apply rounded-xl border bg-white/55 px-3 py-2 text-text-primary font-mono text-sm;
+		@apply transition-all duration-200 placeholder:text-text-muted;
+		@apply focus:outline-none focus:ring-2;
+		border-color: rgba(21, 22, 17, 0.1);
+	}
+	.input-field:focus {
+		border-color: rgba(39, 89, 65, 0.42);
+		--tw-ring-color: rgba(39, 89, 65, 0.12);
+	}
 
-  .btn-primary {
-    @apply rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-200;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed;
-    background: linear-gradient(135deg, #e6007a 0%, #c30066 100%);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  }
-  .btn-primary:not(:disabled):hover {
-    background: linear-gradient(135deg, #ff1a8f 0%, #e6007a 100%);
-    box-shadow: 0 2px 8px rgba(230, 0, 122, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    transform: translateY(-0.5px);
-  }
-  .btn-primary:active {
-    transform: translateY(0);
-  }
+	.btn-primary {
+		@apply rounded-full px-4 py-2 text-sm font-semibold text-white transition-all duration-200;
+		@apply disabled:opacity-40 disabled:cursor-not-allowed;
+		color: #fffaf0;
+		background: linear-gradient(135deg, #18372d 0%, #326c52 100%);
+		box-shadow:
+			0 12px 26px -18px rgba(24, 55, 45, 0.85),
+			inset 0 1px 0 rgba(255, 255, 255, 0.18);
+	}
+	.btn-primary * {
+		color: inherit;
+	}
+	.btn-primary:not(:disabled):hover {
+		background: linear-gradient(135deg, #214c3d 0%, #3f7c5f 100%);
+		box-shadow:
+			0 16px 32px -18px rgba(24, 55, 45, 0.9),
+			inset 0 1px 0 rgba(255, 255, 255, 0.22);
+		transform: translateY(-0.5px);
+	}
+	.btn-primary:active {
+		transform: translateY(0);
+	}
 
-  .btn-secondary {
-    @apply rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200;
-    @apply text-text-secondary border border-white/[0.08] bg-white/[0.04];
-    @apply disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-  .btn-secondary:not(:disabled):hover {
-    @apply text-text-primary bg-white/[0.08] border-white/[0.12];
-  }
+	.btn-secondary {
+		@apply rounded-full px-3 py-2 text-sm font-semibold transition-all duration-200;
+		@apply border bg-white/45;
+		@apply disabled:opacity-40 disabled:cursor-not-allowed;
+		color: #3e3a31;
+		border-color: rgba(21, 22, 17, 0.1);
+	}
+	.btn-secondary:not(:disabled):hover {
+		@apply bg-white/80;
+		color: #151611;
+		border-color: rgba(24, 55, 45, 0.2);
+	}
 
-  .btn-accent {
-    @apply rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-200;
-    @apply disabled:opacity-40 disabled:cursor-not-allowed;
-  }
+	.btn-accent {
+		@apply rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-200;
+		@apply disabled:opacity-40 disabled:cursor-not-allowed;
+	}
 
-  .label {
-    @apply block text-sm font-medium text-text-secondary mb-1.5;
-  }
+	.label {
+		@apply block text-sm font-medium text-text-secondary mb-1.5;
+	}
 
-  .page-title {
-    @apply text-3xl font-bold tracking-tight font-display;
-  }
+	.page-title {
+		@apply text-3xl font-semibold tracking-tight font-display;
+		color: #151611;
+	}
 
-  .section-title {
-    @apply text-lg font-semibold text-text-primary font-display;
-  }
+	.section-title {
+		@apply text-lg font-semibold font-display;
+		color: #151611;
+	}
 
-  .status-badge {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
-  }
+	.status-badge {
+		@apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+	}
 
-  .gift-panel {
-    @apply rounded-2xl border p-6;
-    background:
-      radial-gradient(circle at top right, rgba(230, 0, 122, 0.18), transparent 32%),
-      radial-gradient(circle at bottom left, rgba(76, 194, 255, 0.12), transparent 28%),
-      linear-gradient(135deg, rgba(22, 18, 34, 0.95) 0%, rgba(14, 14, 22, 0.92) 100%);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 18px 60px rgba(0, 0, 0, 0.28),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
+	.paper-surface {
+		@apply rounded-xl border p-4;
+		color: #151611;
+		background: rgba(255, 250, 240, 0.62);
+		border-color: rgba(21, 22, 17, 0.1);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+	}
 
-  .gift-step {
-    @apply rounded-xl border border-white/[0.08] bg-white/[0.03] p-4;
-  }
+	.paper-surface-hover {
+		@apply rounded-xl border p-4 transition-colors;
+		color: #151611;
+		background: rgba(255, 250, 240, 0.62);
+		border-color: rgba(21, 22, 17, 0.1);
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+	}
+	.paper-surface-hover:hover {
+		background: rgba(255, 250, 240, 0.82);
+		border-color: rgba(24, 55, 45, 0.2);
+	}
 
-  .gift-chip {
-    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
-    background: rgba(230, 0, 122, 0.12);
-    color: rgba(255, 212, 235, 0.95);
-    border: 1px solid rgba(230, 0, 122, 0.2);
-  }
+	.paper-dashed {
+		@apply rounded-xl border border-dashed p-5;
+		color: #151611;
+		background: rgba(255, 250, 240, 0.5);
+		border-color: rgba(21, 22, 17, 0.16);
+	}
 
-  .gift-share-card {
-    @apply rounded-2xl border p-5;
-    background:
-      linear-gradient(160deg, rgba(230, 0, 122, 0.14) 0%, rgba(76, 194, 255, 0.08) 100%),
-      rgba(12, 12, 18, 0.88);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 14px 40px rgba(0, 0, 0, 0.24),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  }
+	.paper-pill {
+		@apply rounded-full border px-3 py-1 text-xs font-semibold;
+		color: #3e3a31;
+		background: rgba(255, 250, 240, 0.62);
+		border-color: rgba(21, 22, 17, 0.1);
+	}
 
-  .gift-success-card {
-    @apply rounded-2xl border p-5;
-    background:
-      radial-gradient(circle at top left, rgba(52, 211, 153, 0.14), transparent 35%),
-      linear-gradient(135deg, rgba(14, 24, 20, 0.92) 0%, rgba(10, 16, 14, 0.9) 100%);
-    border-color: rgba(52, 211, 153, 0.22);
-    box-shadow:
-      0 16px 42px rgba(0, 0, 0, 0.24),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
+	.soft-success {
+		@apply rounded-xl border px-4 py-3 text-sm;
+		color: #166534;
+		background: rgba(237, 247, 239, 0.82);
+		border-color: rgba(22, 101, 52, 0.22);
+	}
+
+	.soft-warning {
+		@apply rounded-xl border px-4 py-4 text-sm;
+		color: #854d0e;
+		background: rgba(255, 247, 222, 0.88);
+		border-color: rgba(133, 77, 14, 0.22);
+	}
+
+	.soft-info {
+		@apply rounded-xl border px-4 py-3 text-sm;
+		color: #075985;
+		background: rgba(232, 246, 253, 0.82);
+		border-color: rgba(7, 89, 133, 0.22);
+	}
+
+	.soft-danger {
+		@apply rounded-xl border px-4 py-3 text-sm;
+		color: #991b1b;
+		background: rgba(254, 242, 242, 0.86);
+		border-color: rgba(153, 27, 27, 0.22);
+	}
+
+	.active-nav-link,
+	.active-nav-link * {
+		color: #fffaf0 !important;
+	}
+
+	.dark-emerald-surface,
+	.dark-emerald-surface * {
+		color: #fffaf0 !important;
+	}
+
+	.dark-emerald-surface .surface-muted {
+		color: rgba(255, 250, 240, 0.78) !important;
+	}
+
+	.gift-panel {
+		@apply rounded-[2rem] border p-6;
+		color: #151611;
+		background:
+			radial-gradient(circle at top right, rgba(217, 111, 79, 0.18), transparent 32%),
+			radial-gradient(circle at bottom left, rgba(50, 108, 82, 0.13), transparent 28%),
+			linear-gradient(135deg, rgba(255, 250, 240, 0.94) 0%, rgba(247, 237, 218, 0.88) 100%);
+		border-color: rgba(24, 55, 45, 0.12);
+		box-shadow:
+			0 26px 80px -48px rgba(21, 22, 17, 0.62),
+			inset 0 1px 0 rgba(255, 255, 255, 0.72);
+	}
+
+	.gift-step {
+		@apply rounded-[1.25rem] border bg-white/45 p-4;
+		color: #151611;
+		border-color: rgba(21, 22, 17, 0.1);
+	}
+
+	.gift-chip {
+		@apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
+		background: rgba(217, 111, 79, 0.12);
+		color: #8d3f2f;
+		border: 1px solid rgba(217, 111, 79, 0.24);
+	}
+
+	.gift-share-card {
+		@apply rounded-[1.7rem] border p-5;
+		color: #151611;
+		background:
+			linear-gradient(160deg, rgba(217, 111, 79, 0.14) 0%, rgba(24, 55, 45, 0.08) 100%),
+			rgba(255, 250, 240, 0.9);
+		border-color: rgba(24, 55, 45, 0.12);
+		box-shadow:
+			0 18px 55px -34px rgba(21, 22, 17, 0.5),
+			inset 0 1px 0 rgba(255, 255, 255, 0.72);
+	}
+
+	.gift-success-card {
+		@apply rounded-[1.7rem] border p-5;
+		color: #151611;
+		background:
+			radial-gradient(circle at top left, rgba(50, 108, 82, 0.14), transparent 35%),
+			linear-gradient(135deg, rgba(237, 247, 239, 0.92) 0%, rgba(255, 250, 240, 0.9) 100%);
+		border-color: rgba(50, 108, 82, 0.22);
+		box-shadow:
+			0 16px 42px -30px rgba(21, 22, 17, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.7);
+	}
+
+	.eyebrow {
+		@apply text-xs font-bold uppercase tracking-[0.22em];
+		color: #275941;
+	}
+
+	.brand-panel {
+		@apply rounded-[2.35rem] border p-6 md:p-10;
+		color: #151611;
+		border-color: rgba(21, 22, 17, 0.1);
+		background:
+			linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(247, 237, 218, 0.82)),
+			radial-gradient(circle at 82% 18%, rgba(217, 111, 79, 0.2), transparent 18rem);
+		box-shadow: 0 32px 90px -56px rgba(21, 22, 17, 0.68);
+	}
+
+	.sealed-gift-card {
+		@apply rounded-[2rem] border p-5;
+		color: #151611;
+		border-color: rgba(24, 55, 45, 0.1);
+		background:
+			linear-gradient(150deg, rgba(255, 250, 240, 0.96), rgba(237, 247, 239, 0.8)),
+			repeating-linear-gradient(135deg, rgba(217, 111, 79, 0.09) 0 1px, transparent 1px 12px);
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+	}
+
+	.qr-gift-card {
+		@apply rounded-[1.7rem] border p-5 shadow-[0_18px_45px_-34px_rgba(21,22,17,0.65)];
+		color: #151611;
+		background: rgba(255, 250, 240, 0.9);
+		border-color: rgba(24, 55, 45, 0.1);
+	}
 }
 
-/* Background pattern — subtle dot grid */
+/* Background pattern — premium paper grain */
 .bg-pattern {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 24px 24px;
+	background-image:
+		radial-gradient(rgba(24, 55, 45, 0.055) 1px, transparent 1px),
+		linear-gradient(120deg, rgba(255, 255, 255, 0.44), transparent 42%);
+	background-size:
+		22px 22px,
+		100% 100%;
 }
 
-/* Animated gradient orb */
+/* Soft brand wash */
 .gradient-orb {
-  position: fixed;
-  width: 600px;
-  height: 600px;
-  border-radius: 50%;
-  filter: blur(120px);
-  opacity: 0.07;
-  pointer-events: none;
-  z-index: 0;
+	position: fixed;
+	width: 600px;
+	height: 600px;
+	border-radius: 50%;
+	filter: blur(120px);
+	opacity: 0.12;
+	pointer-events: none;
+	z-index: 0;
 }
 
 /* Staggered animation delays */
-.stagger-1 { animation-delay: 0.05s; }
-.stagger-2 { animation-delay: 0.1s; }
-.stagger-3 { animation-delay: 0.15s; }
-.stagger-4 { animation-delay: 0.2s; }
-.stagger-5 { animation-delay: 0.25s; }
+.stagger-1 {
+	animation-delay: 0.05s;
+}
+.stagger-2 {
+	animation-delay: 0.1s;
+}
+.stagger-3 {
+	animation-delay: 0.15s;
+}
+.stagger-4 {
+	animation-delay: 0.2s;
+}
+.stagger-5 {
+	animation-delay: 0.25s;
+}
+
+/*
+ * Runtime contrast guardrails.
+ *
+ * Vite can keep serving Tailwind utilities generated from the previous dark
+ * palette until the dev server is restarted. These final rules make the demo UI
+ * readable even when older semantic utility output is still present in memory.
+ */
+.text-text-primary {
+	color: #151611 !important;
+}
+
+.text-text-secondary {
+	color: #3e3a31 !important;
+}
+
+.text-text-tertiary {
+	color: #514b40 !important;
+}
+
+.text-text-muted {
+	color: #665f52 !important;
+}
+
+.text-ink-500 {
+	color: #6e6758 !important;
+}
+
+.text-ink-700 {
+	color: #3e3a31 !important;
+}
+
+.text-ink-900 {
+	color: #211f1a !important;
+}
+
+.text-ink-950 {
+	color: #151611 !important;
+}
+
+.cursor-not-allowed.text-text-muted {
+	color: #514b40 !important;
+	opacity: 1 !important;
+}
+
+.label {
+	color: #3e3a31 !important;
+}
+
+.input-field {
+	color: #151611 !important;
+}
+
+.input-field::placeholder {
+	color: #665f52 !important;
+	opacity: 1;
+}
+
+.text-accent-green {
+	color: #166534 !important;
+}
+
+.text-accent-yellow {
+	color: #854d0e !important;
+}
+
+.text-accent-blue {
+	color: #075985 !important;
+}
+
+.text-accent-red {
+	color: #991b1b !important;
+}
+
+.btn-primary,
+.btn-primary *,
+.btn-accent,
+.btn-accent *,
+.active-nav-link,
+.active-nav-link *,
+.dark-emerald-surface,
+.dark-emerald-surface * {
+	color: #fffaf0 !important;
+}
+
+.dark-emerald-surface .surface-muted {
+	color: rgba(255, 250, 240, 0.78) !important;
+}
+
+.animate-fade-in {
+	animation: none !important;
+	opacity: 1 !important;
+}
