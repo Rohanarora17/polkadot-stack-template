@@ -34,6 +34,8 @@ type IndexedWithdrawal = {
 	relayer: Address;
 };
 
+const INDEXER_REQUEST_TIMEOUT_MS = 3_500;
+
 export function getStealthPayIndexerUrl() {
 	if (
 		import.meta.env.VITE_STEALTHPAY_INDEXER_KIND === "none" ||
@@ -44,9 +46,11 @@ export function getStealthPayIndexerUrl() {
 
 	const configured =
 		import.meta.env.VITE_STEALTHPAY_INDEXER_URL || import.meta.env.VITE_RELAYER_URL;
-	const globalProcess = (globalThis as {
-		process?: { env?: Record<string, string | undefined> };
-	}).process;
+	const globalProcess = (
+		globalThis as {
+			process?: { env?: Record<string, string | undefined> };
+		}
+	).process;
 	if (!configured && globalProcess?.env?.VITEST) {
 		return null;
 	}
@@ -122,7 +126,11 @@ async function fetchIndexerJson<T>(
 	try {
 		const url = new URL(`${baseUrl}${path}`);
 		Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-		const response = await fetch(url);
+		const controller = new AbortController();
+		const timeout = globalThis.setTimeout(() => controller.abort(), INDEXER_REQUEST_TIMEOUT_MS);
+		const response = await fetch(url, { signal: controller.signal }).finally(() =>
+			globalThis.clearTimeout(timeout),
+		);
 		if (!response.ok) {
 			return null;
 		}
