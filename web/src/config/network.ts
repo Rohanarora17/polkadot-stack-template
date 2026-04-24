@@ -7,6 +7,9 @@ export const LOCAL_CHAIN_ID = 420420421n;
 export const TESTNET_WS_URL = "wss://asset-hub-paseo-rpc.n.dwellir.com";
 export const TESTNET_ETH_RPC_URL = "https://services.polkadothub-rpc.com/testnet";
 export const TESTNET_CHAIN_ID = 420420417n;
+export const TESTNET_ASSET_HUB_GENESIS =
+	"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+export const TESTNET_SS58_PREFIX = 0;
 
 export type NetworkPreset = "local" | "testnet";
 
