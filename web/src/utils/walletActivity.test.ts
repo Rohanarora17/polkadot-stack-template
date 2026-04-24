@@ -20,8 +20,9 @@ describe("wallet activity", () => {
 		});
 	});
 
-	it("records created gifts without storing claim secrets", () => {
+	it("records walletless gift keys so local wallet rows can reopen the claim", () => {
 		recordPrivateGiftCreated({
+			bearerGiftKey: "0x9999999999999999999999999999999999999999999999999999999999999999",
 			commitment: "0x1111111111111111111111111111111111111111111111111111111111111111",
 			createdAt: 1,
 			giftMode: "bearer",
@@ -35,7 +36,9 @@ describe("wallet activity", () => {
 
 		const activity = readPrivateWalletActivity();
 		expect(activity.gifts).toHaveLength(1);
-		expect(JSON.stringify(activity)).not.toContain("giftKey");
+		expect(activity.gifts[0]?.bearerGiftKey).toBe(
+			"0x9999999999999999999999999999999999999999999999999999999999999999",
+		);
 		expect(activity.gifts[0]?.recipientLabel).toBe("Walletless gift link");
 	});
 
@@ -51,6 +54,8 @@ describe("wallet activity", () => {
 			memoPreview: null,
 			poolAddress: "0x3333333333333333333333333333333333333333",
 			recipientLabel: "0x5555555555555555555555555555555555555555",
+			recipientOwner: "0x5555555555555555555555555555555555555555",
+			registryAddress: "0x9999999999999999999999999999999999999999",
 			status: "created",
 			transactionHash: null,
 		});
